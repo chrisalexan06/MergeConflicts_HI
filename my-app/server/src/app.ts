@@ -1,30 +1,34 @@
-//handles api requests and communincates with the database
-import express from "express";
-import cors from "cors";
-import "dotenv/config";
+import express from 'express';
+import authRoutes from './routes/authRoutes.js';
 
-import testDbRouter from "./routes/testDb.js";
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL ?? "http://localhost:5173",
-}));
+// Dynamic CORS middleware: allows 5173, 5177, or any Vite localhost port
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && origin.startsWith('http://localhost:')) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 app.use(express.json());
 
 // Routes
-app.use("/api/test-db", testDbRouter);
+app.use('/api/auth', authRoutes);
 
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
-
-// Start server
-const PORT = Number(process.env.PORT ?? 3000);
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Backend server listening on http://localhost:${PORT}`);
 });
+
+export default app;
