@@ -1,5 +1,6 @@
 import express from 'express';
 import authRoutes from './routes/authRoutes.js';
+import orderRoutes from './routes/orders.js';
 import restaurantRoutes from './routes/restaurantRoutes.js';
 import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
 import { InitialCitySeeder } from './seed/InitialCitySeeder.js';
@@ -29,6 +30,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/orders', orderRoutes);
 app.use('/api/test/restaurants', restaurantRoutes);
 
 InitialCitySeeder.seed()
