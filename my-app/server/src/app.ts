@@ -1,5 +1,6 @@
 import express from 'express';
 import authRoutes from './routes/authRoutes.js';
+import restaurantRoutes from './routes/restaurantRoutes.js';
 import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
 
 
@@ -27,6 +28,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/test/restaurants', restaurantRoutes);
 
 SeedAccountLoader.load()
   .then(() => console.log('Seed accounts loaded successfully.'))

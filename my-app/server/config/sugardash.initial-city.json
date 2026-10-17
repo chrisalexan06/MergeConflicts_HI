@@ -1,0 +1,81 @@
+{
+  "city": "Montreal",
+  "restaurants": [
+    {
+      "restaurantId": 1,
+      "restaurantName": "Sugar Dash Patisserie",
+      "status": "open",
+      "latitude": 45.5017,
+      "longitude": -73.5673,
+      "menu": {
+        "items": [
+          {
+            "itemId": 101,
+            "itemName": "Maple Tarte",
+            "price": 6.5,
+            "status": "available"
+          },
+          {
+            "itemId": 102,
+            "itemName": "Chocolate Eclair",
+            "price": 5.75,
+            "status": "sold_out"
+          },
+          {
+            "itemId": 103,
+            "itemName": "Vanilla Macaron Box",
+            "price": 12.0,
+            "status": "available"
+          }
+        ]
+      }
+    },
+    {
+      "restaurantId": 2,
+      "restaurantName": "Old Port Dessert Atelier",
+      "status": "paused",
+      "latitude": 45.5076,
+      "longitude": -73.5542,
+      "menu": {
+        "items": [
+          {
+            "itemId": 201,
+            "itemName": "Strawberry Cheesecake",
+            "price": 8.25,
+            "status": "available"
+          },
+          {
+            "itemId": 202,
+            "itemName": "Lemon Tart",
+            "price": 6.0,
+            "status": "available"
+          },
+          {
+            "itemId": 203,
+            "itemName": "Brownie Sundae",
+            "price": 7.5,
+            "status": "available"
+          }
+        ]
+      }
+    }
+  ],
+  "couriers": [
+    {
+      "id": 301,
+      "latitude": 45.4972,
+      "longitude": -73.579,
+      "status": "idle"
+    }
+  ],
+  "customers": [
+    {
+      "id": 401,
+      "name": "Alex Morgan",
+      "deliveryAddress": {
+        "latitude": 45.4959,
+        "longitude": -73.5781
+      }
+    }
+  ]
+}

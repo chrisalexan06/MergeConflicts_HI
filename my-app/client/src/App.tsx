@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { RegistrationPanel } from './components/REG/RegistrationPanel';
 import { LoginPanel } from './components/REG/LoginPanel';
 import { CurrentUserPanel } from './components/REG/CurrentUserPanel';
+import CustomerOrders from './pages/CustomerOrders';
 
 export function App() {
   // 1. All useState hooks grouped at the top
@@ -9,6 +10,7 @@ export function App() {
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('sessionToken'));
+  const [showRestaurantTest, setShowRestaurantTest] = useState(false);
 
   // 2. Handlers declared after the state setters exist
   const handleLoginSuccess = (account: any, sessionToken: string) => {
@@ -23,6 +25,10 @@ export function App() {
     localStorage.removeItem('sessionToken');
     setFeedback({ message: 'Successfully logged out.', isError: false });
   };
+
+  if (new URLSearchParams(window.location.search).get('ord-test') === 'true') {
+    return <CustomerOrders />;
+  }
 
   // 3. Clean JSX without stray closing tags
   return (
@@ -46,11 +52,25 @@ export function App() {
       )}
 
       {currentUser && token ? (
-        <CurrentUserPanel
-          account={currentUser}
-          token={token}
-          onLogout={handleLogout}
-        />
+        showRestaurantTest ? (
+          <>
+            <button type="button" onClick={() => setShowRestaurantTest(false)}>
+              Back to account
+            </button>
+            <CustomerOrders />
+          </>
+        ) : (
+          <>
+            <CurrentUserPanel
+              account={currentUser}
+              token={token}
+              onLogout={handleLogout}
+            />
+            <button type="button" onClick={() => setShowRestaurantTest(true)}>
+              View restaurants and menus (R-ORD-01)
+            </button>
+          </>
+        )
       ) : (
         <div>
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
