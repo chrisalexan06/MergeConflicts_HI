@@ -2,6 +2,7 @@ import express from 'express';
 import authRoutes from './routes/authRoutes.js';
 import restaurantRoutes from './routes/restaurantRoutes.js';
 import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
+import { InitialCitySeeder } from './seed/InitialCitySeeder.js';
 
 
 
@@ -30,9 +31,10 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/test/restaurants', restaurantRoutes);
 
-SeedAccountLoader.load()
-  .then(() => console.log('Seed accounts loaded successfully.'))
-  .catch((err) => console.error('Failed to load seed accounts:', err));
+InitialCitySeeder.seed()
+  .then(() => SeedAccountLoader.load())
+  .then(() => console.log('Database seeders completed successfully.'))
+  .catch((err) => console.error('Failed to initialize database seed data:', err));
 
 app.listen(PORT, () => {
   console.log(`Backend server listening on http://localhost:${PORT}`);

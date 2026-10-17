@@ -1,118 +1,92 @@
-import { readFile } from 'node:fs/promises';
-import type { InitialCityConfiguration } from './InitialCityConfiguration.js';
+import { pool } from '../../db.js';
 import { Menu } from '../../domain/ORD/Menu.js';
-import { MenuItem } from '../../domain/ORD/MenuItem.js';
-import { MenuItemStatus } from '../../domain/ORD/MenuItemStatus.js';
 import { Restaurant } from '../../domain/ORD/Restaurant.js';
 import { RestaurantStatus } from '../../domain/ORD/RestaurantStatus.js';
+import { MenuService, type DatabaseQuery } from './MenuService.js';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+interface RestaurantRow extends Record<string, unknown> {
+  restaurantID: string | number;
+  restaurantName: string;
+  restaurantPosition: string;
+  restaurantStatus: string;
 }
 
-function isNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
+function parseId(value: unknown, field: string): number {
+  const id = typeof value === 'number' ? value : Number(value);
+  if (!Number.isSafeInteger(id)) {
+    throw new Error(`Invalid ${field} value returned by the database: ${String(value)}.`);
+  }
+  return id;
 }
 
-function assertInitialCityConfiguration(value: unknown): asserts value is InitialCityConfiguration {
-  if (!isRecord(value) || typeof value.city !== 'string' || !Array.isArray(value.restaurants)) {
-    throw new Error('Initial city configuration must contain a city and a restaurants array.');
+function parsePosition(position: string, restaurantId: number): [number, number] {
+  const coordinates = position.split(',');
+  if (coordinates.length !== 2) {
+    throw new Error(`Invalid restaurantPosition for restaurant ${restaurantId}: expected "latitude,longitude".`);
   }
 
-  for (const [restaurantIndex, restaurant] of value.restaurants.entries()) {
-    if (
-      !isRecord(restaurant)
-      || !isNumber(restaurant.restaurantId)
-      || typeof restaurant.restaurantName !== 'string'
-      || !(
-        restaurant.status === RestaurantStatus.OPEN
-        || restaurant.status === RestaurantStatus.PAUSED
-        || restaurant.status === RestaurantStatus.CLOSED
-      )
-      || !isNumber(restaurant.latitude)
-      || !isNumber(restaurant.longitude)
-      || !isRecord(restaurant.menu)
-      || !Array.isArray(restaurant.menu.items)
-    ) {
-      throw new Error(`Restaurant at index ${restaurantIndex} is invalid in the initial city configuration.`);
-    }
-
-    for (const [itemIndex, item] of restaurant.menu.items.entries()) {
-      if (
-        !isRecord(item)
-        || !isNumber(item.itemId)
-        || typeof item.itemName !== 'string'
-        || !isNumber(item.price)
-        || !(
-          item.status === MenuItemStatus.AVAILABLE
-          || item.status === MenuItemStatus.SOLD_OUT
-        )
-      ) {
-        throw new Error(
-          `Menu item at index ${itemIndex} for restaurant ${restaurant.restaurantId} is invalid in the initial city configuration.`
-        );
-      }
-    }
+  const latitude = Number(coordinates[0].trim());
+  const longitude = Number(coordinates[1].trim());
+  if (
+    !Number.isFinite(latitude)
+    || !Number.isFinite(longitude)
+    || latitude < -90
+    || latitude > 90
+    || longitude < -180
+    || longitude > 180
+  ) {
+    throw new Error(`Invalid restaurantPosition coordinates for restaurant ${restaurantId}.`);
   }
 
-  if (!Array.isArray(value.couriers) || !Array.isArray(value.customers)) {
-    throw new Error('Initial city configuration must contain couriers and customers arrays.');
-  }
+  return [latitude, longitude];
+}
 
-  for (const [courierIndex, courier] of value.couriers.entries()) {
-    if (
-      !isRecord(courier)
-      || !isNumber(courier.id)
-      || !isNumber(courier.latitude)
-      || !isNumber(courier.longitude)
-      || typeof courier.status !== 'string'
-    ) {
-      throw new Error(`Courier at index ${courierIndex} is invalid in the initial city configuration.`);
-    }
-  }
-
-  for (const [customerIndex, customer] of value.customers.entries()) {
-    if (
-      !isRecord(customer)
-      || !isNumber(customer.id)
-      || typeof customer.name !== 'string'
-      || !isRecord(customer.deliveryAddress)
-      || !isNumber(customer.deliveryAddress.latitude)
-      || !isNumber(customer.deliveryAddress.longitude)
-    ) {
-      throw new Error(`Customer at index ${customerIndex} is invalid in the initial city configuration.`);
-    }
+function parseRestaurantStatus(status: string, restaurantId: number): RestaurantStatus {
+  switch (status.trim().toLowerCase()) {
+    case RestaurantStatus.OPEN:
+      return RestaurantStatus.OPEN;
+    case RestaurantStatus.PAUSED:
+      return RestaurantStatus.PAUSED;
+    case RestaurantStatus.CLOSED:
+      return RestaurantStatus.CLOSED;
+    default:
+      throw new Error(`Invalid restaurantStatus for restaurant ${restaurantId}: ${status}.`);
   }
 }
 
 export class RestaurantService {
   private restaurants: Restaurant[] | null = null;
+  private readonly menuService: MenuService;
+
+  constructor(private readonly query: DatabaseQuery = pool.query.bind(pool)) {
+    this.menuService = new MenuService(query);
+  }
 
   public async loadRestaurants(): Promise<Restaurant[]> {
-    const configurationUrl = new URL('../../../config/sugardash.initial-city.json', import.meta.url);
-    const configurationText = await readFile(configurationUrl, 'utf8');
-
-    let parsedConfiguration: unknown;
-    try {
-      parsedConfiguration = JSON.parse(configurationText);
-    } catch (error) {
-      throw new Error('Failed to parse the SugarDash initial city configuration.', { cause: error });
-    }
-
-    assertInitialCityConfiguration(parsedConfiguration);
-
-    const restaurants = parsedConfiguration.restaurants.map(
-      (restaurant) => new Restaurant(
-        restaurant.restaurantId,
-        restaurant.restaurantName,
-        restaurant.status,
-        restaurant.latitude,
-        restaurant.longitude,
-        new Menu(restaurant.menu.items.map(
-          (item) => new MenuItem(item.itemId, item.itemName, item.price, item.status)
-        ))
-      )
+    const result = await this.query(
+      `SELECT "restaurantID", "restaurantName", "restaurantPosition", "restaurantStatus"
+       FROM public."Restaurant"
+       ORDER BY "restaurantID";`
     );
+
+    const restaurants = await Promise.all((result.rows as RestaurantRow[]).map(async (row) => {
+      const restaurantId = parseId(row.restaurantID, 'restaurantID');
+      if (typeof row.restaurantName !== 'string' || typeof row.restaurantPosition !== 'string'
+        || typeof row.restaurantStatus !== 'string') {
+        throw new Error(`Invalid restaurant data returned for restaurant ${restaurantId}.`);
+      }
+
+      const [latitude, longitude] = parsePosition(row.restaurantPosition, restaurantId);
+      const menu = await this.menuService.getMenuForRestaurant(restaurantId);
+      return new Restaurant(
+        restaurantId,
+        row.restaurantName,
+        parseRestaurantStatus(row.restaurantStatus, restaurantId),
+        latitude,
+        longitude,
+        menu
+      );
+    }));
 
     this.restaurants = restaurants;
     return this.getRestaurants();
