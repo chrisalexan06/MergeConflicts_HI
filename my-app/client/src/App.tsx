@@ -1,9 +1,30 @@
 import { useState } from 'react';
 import { RegistrationPanel } from './components/REG/RegistrationPanel';
+import { LoginPanel } from './components/REG/LoginPanel';
+import { CurrentUserPanel } from './components/REG/CurrentUserPanel';
 
 export function App() {
+  // 1. All useState hooks grouped at the top
   const [feedback, setFeedback] = useState<{ message: string; isError: boolean } | null>(null);
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('sessionToken'));
 
+  // 2. Handlers declared after the state setters exist
+  const handleLoginSuccess = (account: any, sessionToken: string) => {
+    setCurrentUser(account);
+    setToken(sessionToken);
+    setFeedback({ message: `Logged in as ${account.accountName} (${account.role})`, isError: false });
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setToken(null);
+    localStorage.removeItem('sessionToken');
+    setFeedback({ message: 'Successfully logged out.', isError: false });
+  };
+
+  // 3. Clean JSX without stray closing tags
   return (
     <div style={{ padding: '32px', fontFamily: 'sans-serif', maxWidth: '450px', margin: '0 auto' }}>
       <h2>Sugar Dash</h2>
@@ -24,10 +45,71 @@ export function App() {
         </div>
       )}
 
-      <RegistrationPanel
-        onSuccess={(msg) => setFeedback({ message: msg, isError: false })}
-        onError={(err) => setFeedback({ message: err, isError: true })}
-      />
+      {currentUser && token ? (
+        <CurrentUserPanel
+          account={currentUser}
+          token={token}
+          onLogout={handleLogout}
+        />
+      ) : (
+        <div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthTab('login');
+                setFeedback(null);
+              }}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #ccc',
+                backgroundColor: authTab === 'login' ? '#0070f3' : '#f0f0f0',
+                color: authTab === 'login' ? '#fff' : '#333',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Log In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthTab('register');
+                setFeedback(null);
+              }}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #ccc',
+                backgroundColor: authTab === 'register' ? '#0070f3' : '#f0f0f0',
+                color: authTab === 'register' ? '#fff' : '#333',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Register
+            </button>
+          </div>
+
+          {authTab === 'login' ? (
+            <LoginPanel
+              onLoginSuccess={handleLoginSuccess}
+              onError={(err) => setFeedback({ message: err, isError: true })}
+            />
+          ) : (
+            <RegistrationPanel
+              onSuccess={(msg) => {
+                setFeedback({ message: `${msg} Please log in below.`, isError: false });
+                setAuthTab('login');
+              }}
+              onError={(err) => setFeedback({ message: err, isError: true })}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
