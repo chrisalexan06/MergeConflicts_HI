@@ -1,6 +1,6 @@
 import express from 'express';
 import authRoutes from './routes/authRoutes.js';
-
+import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,7 +26,10 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 
-
+SeedAccountLoader.load()
+  .then(() => console.log('Seed accounts loaded successfully.'))
+  .catch((err) => console.error('Failed to load seed accounts:', err));
+  
 app.listen(PORT, () => {
   console.log(`Backend server listening on http://localhost:${PORT}`);
 });

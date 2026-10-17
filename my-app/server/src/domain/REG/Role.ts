@@ -4,3 +4,4 @@ export enum Role {
     COURIER = 'courier',
     OPERATOR = 'operator',
 }
+
