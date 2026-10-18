@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 
+interface SignedInAccount {
+  accountID: number;
+  accountName: string;
+  email: string;
+  role: string;
+}
+
 interface Props {
-  onLoginSuccess: (account: any, token: string) => void;
+  onLoginSuccess: (account: SignedInAccount, token: string) => void;
   onError: (error: string) => void;
 }
 
@@ -20,15 +27,15 @@ export const LoginPanel: React.FC<Props> = ({ onLoginSuccess, onError }) => {
         body: JSON.stringify({ accountName: accountName.trim(), password }),
       });
 
-      const data = await res.json();
+      const data = await res.json() as { sessionToken: string; account: SignedInAccount; error?: string };
       if (!res.ok) {
         throw new Error(data.error || 'Login failed');
       }
 
       localStorage.setItem('sessionToken', data.sessionToken);
       onLoginSuccess(data.account, data.sessionToken);
-    } catch (err: any) {
-      onError(err.message || 'Login failed');
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
     }
