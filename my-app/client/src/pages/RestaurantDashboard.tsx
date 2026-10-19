@@ -1,0 +1,105 @@
+import { useEffect, useState } from 'react';
+import { listRestaurantOrders, updateRestaurantOrder, type RestaurantOrderAction } from '../api/orders';
+import type { Order } from '../types/order';
+
+interface RestaurantDashboardProps {
+	token: string;
+}
+
+const actionsByStatus: Partial<Record<Order['orderStatus'], RestaurantOrderAction[]>> = {
+	placed: ['accept', 'cancel'],
+	accepted: ['preparing', 'cancel'],
+	preparing: ['ready', 'cancel'],
+};
+
+const actionLabels: Record<RestaurantOrderAction, string> = {
+	accept: 'Accept',
+	preparing: 'Start preparing',
+	ready: 'Mark ready',
+	cancel: 'Cancel order',
+};
+
+export default function RestaurantDashboard({ token }: RestaurantDashboardProps) {
+	const [orders, setOrders] = useState<Order[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	async function refreshOrders() {
+		setOrders(await listRestaurantOrders(token));
+	}
+
+	useEffect(() => {
+		let active = true;
+		void listRestaurantOrders(token)
+			.then((restaurantOrders) => {
+				if (active) setOrders(restaurantOrders);
+			})
+			.catch((requestError: unknown) => {
+				if (active) setError(requestError instanceof Error ? requestError.message : 'Could not load orders.');
+			})
+			.finally(() => {
+				if (active) setLoading(false);
+			});
+		return () => { active = false; };
+	}, [token]);
+
+	async function handleAction(orderId: number, action: RestaurantOrderAction) {
+		setUpdatingOrderId(orderId);
+		setError(null);
+		try {
+			await updateRestaurantOrder(token, orderId, action);
+			await refreshOrders();
+		} catch (requestError) {
+			setError(requestError instanceof Error ? requestError.message : 'Could not update the order.');
+		} finally {
+			setUpdatingOrderId(null);
+		}
+	}
+
+	return (
+		<section aria-labelledby="restaurant-orders-heading">
+			<h2 id="restaurant-orders-heading">Restaurant orders</h2>
+			{loading && <p>Loading orders...</p>}
+			{error && <p role="alert">{error}</p>}
+			{!loading && orders.length === 0 && <p>No orders for this restaurant.</p>}
+			{!loading && orders.length > 0 && (
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Order</th>
+							<th scope="col">Placed</th>
+							<th scope="col">Items</th>
+							<th scope="col">Total</th>
+							<th scope="col">Status</th>
+							<th scope="col">Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						{orders.map((order) => (
+							<tr key={order.orderId}>
+								<td>{order.orderId}</td>
+								<td>{new Date(order.createdAt).toLocaleString()}</td>
+								<td>{order.items.map((item) => `${item.quantity} x ${item.itemName}`).join(', ')}</td>
+								<td>{order.total.toFixed(2)}</td>
+								<td>{order.orderStatus}</td>
+								<td>
+									{(actionsByStatus[order.orderStatus] ?? []).map((action) => (
+										<button
+											key={action}
+											type="button"
+											disabled={updatingOrderId === order.orderId}
+											onClick={() => void handleAction(order.orderId, action)}
+										>
+											{actionLabels[action]}
+										</button>
+									))}
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			)}
+		</section>
+	);
+}

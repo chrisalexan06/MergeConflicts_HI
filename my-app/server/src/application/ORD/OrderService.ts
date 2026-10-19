@@ -1,8 +1,6 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../db.js';
 import { MenuItemStatus } from '../../domain/ORD/MenuItemStatus.js';
-import { Order } from '../../domain/ORD/Order.js';
-import { OrderLine } from '../../domain/ORD/OrderLine.js';
 import { OrderStatus } from '../../domain/ORD/OrderStatus.js';
 import { RestaurantStatus } from '../../domain/ORD/RestaurantStatus.js';
 import { MenuService } from './MenuService.js';
@@ -19,6 +17,11 @@ export interface ValidatedOrderData {
   customerId: number;
   restaurantId: number;
   orderLines: ValidatedOrderLine[];
+}
+
+export interface OrderLineRequest {
+  itemId: number;
+  quantity: number;
 }
 
 export interface PersistedOrderLine extends ValidatedOrderLine {
@@ -60,7 +63,7 @@ export class OrderService {
   public async validateOrder(
     customerId: number,
     restaurantId: number,
-    orderLines: OrderLine[]
+    orderLines: OrderLineRequest[]
   ): Promise<ValidatedOrderData> {
     await this.restaurantService.loadRestaurants();
 
@@ -110,7 +113,7 @@ export class OrderService {
   public async placeOrder(
     customerId: number,
     restaurantId: number,
-    orderLines: OrderLine[]
+    orderLines: OrderLineRequest[]
   ): Promise<PlacedOrder> {
     const validatedOrder = await this.validateOrder(customerId, restaurantId, orderLines);
     const client = await this.connect();
@@ -156,19 +159,11 @@ export class OrderService {
 
       await client.query('COMMIT');
 
-      const order = new Order(
-        orderId,
-        validatedOrder.customerId,
-        validatedOrder.restaurantId,
-        validatedOrder.orderLines.map((line) => new OrderLine(line.itemId, line.quantity)),
-        OrderStatus.RECEIVED
-      );
-
       return {
         orderId,
-        customerId: order.customerId,
-        restaurantId: order.restaurantId,
-        status: order.status,
+        customerId: validatedOrder.customerId,
+        restaurantId: validatedOrder.restaurantId,
+        status: OrderStatus.PLACED,
         createdAt,
         orderLines: persistedLines,
       };
