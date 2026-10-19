@@ -29,6 +29,7 @@ function createHarness(options: HarnessOptions = {}) {
 	const savedOrders = new Map<string, Order>();
 	const persistedStatuses = new Map<string, OrderStatus>();
 	const createdOrders: Order[] = [];
+	let statusUpdateCount = 0;
 	if (options.existingOrder) {
 		savedOrders.set(options.existingOrder.id, options.existingOrder);
 		persistedStatuses.set(options.existingOrder.id, options.existingOrder.status);
@@ -63,6 +64,7 @@ function createHarness(options: HarnessOptions = {}) {
 				return order;
 			},
 			updateStatus: async (order, expectedStatus) => {
+				statusUpdateCount += 1;
 				if (options.updateSucceeds === false || persistedStatuses.get(order.id) !== expectedStatus) {
 					return false;
 				}
@@ -80,6 +82,9 @@ function createHarness(options: HarnessOptions = {}) {
 		service: new OrderService(dependencies),
 		createdOrders,
 		savedOrders,
+		get statusUpdateCount() {
+			return statusUpdateCount;
+		},
 		setUser(nextUser: AuthenticatedUser | null) {
 			user = nextUser;
 		},
@@ -257,5 +262,22 @@ describe("OrderService", () => {
 		});
 		const concurrentChange = createHarness({ existingOrder: conflictOrder, updateSucceeds: false });
 		await assert.rejects(() => concurrentChange.service.cancelOrder(conflictOrder.id), { code: "CONFLICT" });
+	});
+
+	it("tracks the customer's order without changing its state", async () => {
+		const preparingOrder = new Order({
+			id: "order-preparing",
+			customerId: "customer-1",
+			restaurantId: "restaurant-1",
+			lines: [new OrderLine("item-1", "Cake", 4.5, 1)],
+			createdAt: new Date(),
+		}, OrderStatus.PREPARING);
+		const harness = createHarness({ existingOrder: preparingOrder });
+
+		const trackedOrder = await harness.service.getOrder(preparingOrder.id);
+
+		assert.equal(trackedOrder.status, OrderStatus.PREPARING);
+		assert.equal(harness.savedOrders.get(preparingOrder.id)?.status, OrderStatus.PREPARING);
+		assert.equal(harness.statusUpdateCount, 0);
 	});
 });

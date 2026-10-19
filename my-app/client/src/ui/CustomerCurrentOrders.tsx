@@ -3,10 +3,11 @@ import type { Order } from "../types/order";
 
 interface CustomerCurrentOrdersProps {
   orders: Order[];
+  onTrackOrder(orderId: number): void;
   onCancelOrder(orderId: number): Promise<void>;
 }
 
-export function CustomerCurrentOrders({ orders, onCancelOrder }: CustomerCurrentOrdersProps) {
+export function CustomerCurrentOrders({ orders, onTrackOrder, onCancelOrder }: CustomerCurrentOrdersProps) {
   const [message, setMessage] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
@@ -44,7 +45,15 @@ export function CustomerCurrentOrders({ orders, onCancelOrder }: CustomerCurrent
               const total = order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
               return (
                 <tr key={order.orderId}>
-                  <td>{order.orderId}</td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label={`Track order ${order.orderId}`}
+                      onClick={() => onTrackOrder(order.orderId)}
+                    >
+                      {order.orderId}
+                    </button>
+                  </td>
                   <td>{order.restaurantId}</td>
                   <td>{new Date(order.createdAt).toLocaleString()}</td>
                   <td>{total.toFixed(2)}</td>

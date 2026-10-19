@@ -26,6 +26,10 @@ export function listCustomerOrders(token: string): Promise<Order[]> {
   return request<Order[]>(token, "");
 }
 
+export function getCustomerOrder(token: string, orderId: number): Promise<Order> {
+	return request<Order>(token, `/${orderId}`);
+}
+
 export function placeOrder(token: string, order: PlaceOrderRequest): Promise<Order> {
   return request<Order>(token, "", { method: "POST", body: JSON.stringify(order) });
 }
