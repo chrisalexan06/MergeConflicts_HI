@@ -45,9 +45,6 @@ function databaseStatusToDomain(status: string): OrderStatus {
 }
 
 function domainStatusToDatabase(status: OrderStatus): string {
-	if (status === OrderStatus.PLACED) {
-		return "received";
-	}
 	return status.toLowerCase();
 }
 

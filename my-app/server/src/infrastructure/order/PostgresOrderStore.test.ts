@@ -46,7 +46,7 @@ describe("PostgresOrderStore", () => {
 		assert.equal(order.id, "81");
 		assert.equal(order.status, OrderStatus.PLACED);
 		assert.deepEqual(calls.map((call) => call.sql.trim().split(/\s+/)[0]), ["BEGIN", "INSERT", "INSERT", "COMMIT"]);
-		assert.deepEqual(calls[1].values, ["12", "7", "received"]);
+		assert.deepEqual(calls[1].values, ["12", "7", "placed"]);
 		assert.deepEqual(calls[2].values, ["81", "3", 2, 4.5, "Cake"]);
 		assert.equal(released, true);
 	});
@@ -176,7 +176,7 @@ describe("PostgresOrderStore", () => {
 
 		assert.equal(await store.updateStatus(order, OrderStatus.PLACED), true);
 		assert.match(queryText, /"orderStatus" = \$4/);
-		assert.deepEqual(queryValues, ["81", "cancelled", order.updatedAt, "received"]);
+		assert.deepEqual(queryValues, ["81", "cancelled", order.updatedAt, "placed"]);
 	});
 
 	it("reports a lost status race when no row matches the expected state", async () => {
