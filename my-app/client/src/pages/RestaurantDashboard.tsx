@@ -58,47 +58,56 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 	}
 
 	return (
-		<section aria-labelledby="restaurant-orders-heading">
-			<h2 id="restaurant-orders-heading">Restaurant orders</h2>
-			{loading && <p>Loading orders...</p>}
-			{error && <p role="alert">{error}</p>}
-			{!loading && orders.length === 0 && <p>No orders for this restaurant.</p>}
+		<section aria-labelledby="restaurant-orders-heading" className="card">
+			<h2 id="restaurant-orders-heading" className="page-title">Restaurant Orders</h2>
+
+			{loading && <p className="muted">Loading Orders...</p>}
+			{error && <div role="alert" className="alert alert-error">{error}</div>}
+			{!loading && orders.length === 0 && <p className="muted">No orders for this restaurant.</p>}
+
 			{!loading && orders.length > 0 && (
+			<div className="table-wrap">
 				<table>
-					<thead>
-						<tr>
-							<th scope="col">Order</th>
-							<th scope="col">Placed</th>
-							<th scope="col">Items</th>
-							<th scope="col">Total</th>
-							<th scope="col">Status</th>
-							<th scope="col">Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						{orders.map((order) => (
-							<tr key={order.orderId}>
-								<td>{order.orderId}</td>
-								<td>{new Date(order.createdAt).toLocaleString()}</td>
-								<td>{order.items.map((item) => `${item.quantity} x ${item.itemName}`).join(', ')}</td>
-								<td>{order.total.toFixed(2)}</td>
-								<td>{order.orderStatus}</td>
-								<td>
-									{(actionsByStatus[order.orderStatus] ?? []).map((action) => (
-										<button
-											key={action}
-											type="button"
-											disabled={updatingOrderId === order.orderId}
-											onClick={() => void handleAction(order.orderId, action)}
-										>
-											{actionLabels[action]}
-										</button>
-									))}
-								</td>
-							</tr>
-						))}
-					</tbody>
+				<thead>
+					<tr>
+					<th scope="col">Order</th>
+					<th scope="col">Placed</th>
+					<th scope="col">Items</th>
+					<th scope="col">Total</th>
+					<th scope="col">Status</th>
+					<th scope="col">Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{orders.map((order) => (
+					<tr key={order.orderId}>
+						<td>#{order.orderId}</td>
+						<td>{new Date(order.createdAt).toLocaleString()}</td>
+						<td>{order.items.map((item) => `${item.quantity} x ${item.itemName}`).join(', ')}</td>
+						<td>${order.total.toFixed(2)}</td>
+						<td>
+						<span className={`badge badge-${order.orderStatus}`}>{order.orderStatus}</span>
+						</td>
+						<td>
+						<div className="actions">
+							{(actionsByStatus[order.orderStatus] ?? []).map((action) => (
+							<button
+								key={action}
+								type="button"
+								className={action === 'cancel' ? 'btn btn-secondary' : 'btn'}
+								disabled={updatingOrderId === order.orderId}
+								onClick={() => void handleAction(order.orderId, action)}
+							>
+								{actionLabels[action]}
+							</button>
+							))}
+						</div>
+						</td>
+					</tr>
+					))}
+				</tbody>
 				</table>
+			</div>
 			)}
 		</section>
 	);
