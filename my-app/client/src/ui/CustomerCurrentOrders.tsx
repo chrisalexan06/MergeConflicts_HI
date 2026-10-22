@@ -24,58 +24,78 @@ export function CustomerCurrentOrders({ orders, onTrackOrder, onCancelOrder }: C
   }
 
   return (
-    <section>
-      <h2>Your orders</h2>
+    <section className="card">
+      <h2 className="page-title">Your orders</h2>
+
       {orders.length === 0 ? (
-        <p>You have no orders yet.</p>
+        <p className="muted">You have no orders yet.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Order</th>
-              <th scope="col">Restaurant</th>
-              <th scope="col">Placed</th>
-              <th scope="col">Total</th>
-              <th scope="col">Status</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => {
-              const total = order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-              return (
-                <tr key={order.orderId}>
-                  <td>
-                    <button
-                      type="button"
-                      aria-label={`Track order ${order.orderId}`}
-                      onClick={() => onTrackOrder(order.orderId)}
-                    >
-                      {order.orderId}
-                    </button>
-                  </td>
-                  <td>{order.restaurantId}</td>
-                  <td>{new Date(order.createdAt).toLocaleString()}</td>
-                  <td>{total.toFixed(2)}</td>
-                  <td>{order.orderStatus}</td>
-                  <td>
-                    {order.orderStatus === "placed" && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Order</th>
+                <th scope="col">Restaurant</th>
+                <th scope="col">Placed</th>
+                <th scope="col">Items</th>
+                <th scope="col">Total</th>
+                <th scope="col" className="col-status">Status</th>
+                <th scope="col" className="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => {
+                const total = order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+                return (
+                  <tr key={order.orderId}>
+                    <td>
                       <button
                         type="button"
-                        disabled={cancellingId === order.orderId}
-                        onClick={() => void cancel(order.orderId)}
+                        className="link-btn"
+                        aria-label={`Track order ${order.orderId}`}
+                        onClick={() => onTrackOrder(order.orderId)}
                       >
-                        {cancellingId === order.orderId ? "Cancelling..." : "Cancel order"}
+                        #{order.orderId}
                       </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td>{order.restaurantId}</td>
+                    <td>{new Date(order.createdAt).toLocaleString()}</td>
+                    <td>
+                      {order.items.map((item, i) => (
+                        <div key={`${item.itemName}-${i}`}>
+                          {item.quantity} x {item.itemName}
+                        </div>
+                      ))}
+                    </td>
+                    <td>${total.toFixed(2)}</td>
+                    <td className="col-status">
+                      <span className={`badge badge-${order.orderStatus}`}>
+                        {order.orderStatus === 'cancelled' ? 'Cancelled' : order.orderStatus}
+                      </span>
+                    </td>
+                    <td className="col-actions">
+                      {order.orderStatus === "placed" && (
+                        <div className="actions">
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={cancellingId === order.orderId}
+                            onClick={() => void cancel(order.orderId)}
+                          >
+                            {cancellingId === order.orderId ? "Cancelling..." : "Cancel order"}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
-      <p role="status" aria-live="polite">{message}</p>
+
+      {message && <div role="status" aria-live="polite" className="alert alert-error">{message}</div>}
     </section>
   );
 }

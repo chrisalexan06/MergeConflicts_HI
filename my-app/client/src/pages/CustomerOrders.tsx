@@ -153,48 +153,60 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
   return (
     <main>
-      <h1>Temporary ORD Review UI</h1>
-      {loading && <p>Loading restaurant data...</p>}
-      {error && <p role="alert">Error loading restaurant data: {error}</p>}
+      {loading && <p className="muted">Loading restaurant data...</p>}
+      {error && <div role="alert" className="alert alert-error">Error loading restaurant data: {error}</div>}
+
       {!loading && !error && (
         <>
-          <section>
-            <h2>R-ORD-01 – Loaded Restaurant Data</h2>
+          //browse restaurants
+          <section className="card">
+            <h2 className="page-title">Restaurants</h2>
             {restaurants.length === 0 ? (
-              <p>No restaurants were returned by the API.</p>
+              <p className="muted">No restaurants were returned by the API.</p>
             ) : (
-              restaurants.map((restaurant) => (
-                <article key={restaurant.restaurantId}>
-                  <h3>{restaurant.restaurantName}</h3>
-                  <p>Status: {restaurant.status}</p>
-                  <p>Latitude: {restaurant.latitude}</p>
-                  <p>Longitude: {restaurant.longitude}</p>
-                  <h4>Menu</h4>
-                  {restaurant.menu.items.length === 0 ? (
-                    <p>No menu items.</p>
-                  ) : (
-                    <ul>
-                      {restaurant.menu.items.map((item) => (
-                        <li key={item.itemId}>
-                          {item.itemName} — ${item.price.toFixed(2)} — {item.status}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </article>
-              ))
+              <div className="restaurant-grid">
+                {restaurants.map((restaurant) => (
+                  <article key={restaurant.restaurantId} className="sub-card">
+                    <div className="sub-card-header">
+                      <h3>{restaurant.restaurantName}</h3>
+                      <span className={`badge badge-${restaurant.status}`}>{restaurant.status}</span>
+                    </div>
+                    {restaurant.menu.items.length === 0 ? (
+                      <p className="muted">No menu items.</p>
+                    ) : (
+                      <table>
+                        <tbody>
+                          {restaurant.menu.items.map((item) => (
+                            <tr key={item.itemId}>
+                              <td>{item.itemName}</td>
+                              <td>${item.price.toFixed(2)}</td>
+                              <td className="col-status">
+                                <span className={`badge badge-${item.status}`}>
+                                  {item.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </article>
+                ))}
+              </div>
             )}
           </section>
 
-          <section>
-            <h2>R-ORD-02 – Order Placement Test</h2>
+          //place an order
+          <section className="card">
+            <h2 className="page-title">Place an order</h2>
             {restaurants.length === 0 ? (
-              <p>Order testing is unavailable because no restaurants were loaded.</p>
+              <p className="muted">Ordering is unavailable because no restaurants were loaded.</p>
             ) : (
               <form onSubmit={handlePlaceOrder}>
-                <label>
-                  Restaurant:
+                <div className="form-row">
+                  <label htmlFor="restaurant-select">Restaurant</label>
                   <select
+                    id="restaurant-select"
                     value={selectedRestaurantId ?? ''}
                     onChange={(event) => {
                       setSelectedRestaurantId(Number(event.target.value));
@@ -209,87 +221,127 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                       </option>
                     ))}
                   </select>
-                </label>
+                </div>
 
                 {selectedRestaurant && (
-                  <>
-                    <h3>{selectedRestaurant.restaurantName} menu</h3>
-                    {selectedRestaurant.menu.items.length === 0 ? (
-                      <p>No menu items.</p>
-                    ) : (
-                      <ul>
-                        {selectedRestaurant.menu.items.map((item) => (
-                          <li key={item.itemId}>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={selectedItems[item.itemId] ?? false}
-                                onChange={(event) => {
-                                  setSelectedItems((current) => ({
-                                    ...current,
-                                    [item.itemId]: event.target.checked,
-                                  }));
-                                }}
-                              />
-                              {item.itemName} — ${item.price.toFixed(2)} — {item.status}
-                            </label>
-                            <label>
-                              {' '}Quantity:
-                              <input
-                                type="number"
-                                value={quantities[item.itemId] ?? '1'}
-                                onChange={(event) => {
-                                  setQuantities((current) => ({
-                                    ...current,
-                                    [item.itemId]: event.target.value,
-                                  }));
-                                }}
-                              />
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
+                  selectedRestaurant.menu.items.length === 0 ? (
+                    <p className="muted">No menu items.</p>
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th scope="col">Order</th>
+                            <th scope="col">Item</th>
+                            <th scope="col">Price</th>
+                            <th scope="col" className="col-status">Status</th>
+                            <th scope="col">Quantity</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedRestaurant.menu.items.map((item) => (
+                            <tr key={item.itemId} className={item.status === 'sold_out' ? 'row-soldout' : ''}>
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${item.itemName}`}
+                                  checked={selectedItems[item.itemId] ?? false}
+                                  onChange={(event) => {
+                                    setSelectedItems((current) => ({
+                                      ...current,
+                                      [item.itemId]: event.target.checked,
+                                    }));
+                                  }}
+                                />
+                              </td>
+                              <td>{item.itemName}</td>
+                              <td>${item.price.toFixed(2)}</td>
+                              <td className="col-status">
+                                <span className={`badge badge-${item.status}`}>
+                                  {item.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  className="qty-input"
+                                  aria-label={`Quantity of ${item.itemName}`}
+                                  value={quantities[item.itemId] ?? '1'}
+                                  onChange={(event) => {
+                                    setQuantities((current) => ({
+                                      ...current,
+                                      [item.itemId]: event.target.value,
+                                    }));
+                                  }}
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
                 )}
 
-                <button type="submit" disabled={placingOrder || selectedRestaurantId === null}>
-                  {placingOrder ? 'Placing order...' : 'Place Order'}
+                <button
+                  type="submit"
+                  className="btn form-submit"
+                  disabled={placingOrder || selectedRestaurantId === null}
+                >
+                  {placingOrder ? 'Placing order...' : 'Place order'}
                 </button>
               </form>
             )}
-            {orderResult && <p role="status">{orderResult}</p>}
+            {orderResult && (
+              <div
+                role="status"
+                className={`alert ${orderResult.startsWith('Order placed') ? 'alert-success' : 'alert-error'}`}
+              >
+                {orderResult}
+              </div>
+            )}
           </section>
-          <section aria-labelledby="track-order-heading">
-            <h2 id="track-order-heading">Track an order</h2>
-            <form onSubmit={handleTrackOrderSubmit}>
-              <label htmlFor="track-order-id">Order ID</label>
+
+          //track order
+          <section className="card" aria-labelledby="track-order-heading">
+            <h2 id="track-order-heading" className="page-title">Track an order</h2>
+            <form onSubmit={handleTrackOrderSubmit} className="inline-form">
               <input
                 id="track-order-id"
                 type="number"
                 min="1"
                 step="1"
+                placeholder="Order ID"
+                aria-label="Order ID"
+                className="qty-input"
                 value={trackingOrderId}
                 onChange={(event) => setTrackingOrderId(event.target.value)}
               />
-              <button type="submit" disabled={trackingOrder}>
-                {trackingOrder ? 'Loading order...' : 'Track order'}
+              <button type="submit" className="btn" disabled={trackingOrder}>
+                {trackingOrder ? 'Loading...' : 'Track order'}
               </button>
             </form>
-            {trackingError && <p role="alert">{trackingError}</p>}
+
+            {trackingError && <div role="alert" className="alert alert-error">{trackingError}</div>}
+
             {trackedOrder && (
-              <article aria-live="polite">
-                <h3>Order {trackedOrder.orderId}</h3>
-                <p>Status: {trackedOrder.orderStatus}</p>
-                <p>Restaurant: {trackedOrder.restaurantId}</p>
-                <p>Placed: {new Date(trackedOrder.createdAt).toLocaleString()}</p>
-                <ul>
-                  {trackedOrder.items.map((item) => (
-                    <li key={item.itemId}>{item.quantity} x {item.itemName}</li>
-                  ))}
-                </ul>
+              <article aria-live="polite" className="sub-card">
+                <div className="sub-card-header">
+                  <h3>Order #{trackedOrder.orderId}</h3>
+                  <span className={`badge badge-${trackedOrder.orderStatus}`}>
+                    {trackedOrder.orderStatus}
+                  </span>
+                </div>
+                <p className="muted">
+                  Restaurant {trackedOrder.restaurantId} · Placed {new Date(trackedOrder.createdAt).toLocaleString()}
+                </p>
+                {trackedOrder.items.map((item) => (
+                  <div key={item.itemId}>{item.quantity} x {item.itemName}</div>
+                ))}
                 <button
                   type="button"
+                  className="btn btn-secondary refresh-btn"
                   disabled={trackingOrder}
                   onClick={() => void handleTrackOrder(trackedOrder.orderId)}
                 >
@@ -298,12 +350,13 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
               </article>
             )}
           </section>
+
           <CustomerCurrentOrders
             orders={orders}
             onTrackOrder={(orderId) => void handleTrackOrder(orderId)}
             onCancelOrder={handleCancelOrder}
           />
-          {ordersError && <p role="alert">Error loading orders: {ordersError}</p>}
+          {ordersError && <div role="alert" className="alert alert-error">Error loading orders: {ordersError}</div>}
         </>
       )}
     </main>

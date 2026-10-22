@@ -107,16 +107,7 @@ export const RegistrationPanel: React.FC<Props> = ({ onSuccess, onError }) => {
 
       <button
         type="submit"
-        style={{
-          width: '100%',
-          padding: '10px',
-          backgroundColor: '#0070f3',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '4px',
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}
+        className="btn btn-block"
       >
         Register
       </button>

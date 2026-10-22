@@ -7,6 +7,12 @@
   --accent-dark: #1a9e92;
   --accent-light: #d9f5f2;
 
+  --success-bg: #dcfce7;
+  --success-text: #15803d;
+
+  --error-bg: #fee2e2;
+  --error-text: #b91c1c;
+
   --background: #fff7fa;
   --card: #ffffff;
   --text: #2d2d2d;
@@ -56,9 +62,13 @@ button {
   transition: background 0.15s, transform 0.05s;
 }
 
+.btn-block { background: linear-gradient(90deg, var(--primary), var(--accent));width: 100%; padding: 12px; }
+
 .btn:hover { background: var(--accent-dark); }
 .btn:active { transform: scale(0.97); }
 .btn:disabled { background: #ddd; color: #999; cursor: not-allowed; }
+
+.btn-block:hover { background: linear-gradient(90deg, var(--primary-dark), var(--accent-dark)); }
 
 .btn-secondary {                       
   background: white;
@@ -106,7 +116,11 @@ td {
 }
 tr:hover td { background: #f8fffe; }
 
-.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.actions {
+    display: flex;
+    gap: 8px;
+    flex-direction: column;
+    flex-wrap: wrap; }
 
 .navbar {
   display: flex;
@@ -138,7 +152,6 @@ tr:hover td { background: #f8fffe; }
 .brand {
   text-align: center;
   margin: 0 0 16px;
-  /* pink-to-turquoise gradient text */
   background: linear-gradient(90deg, var(--primary), var(--accent));
   -webkit-background-clip: text;
   background-clip: text;
@@ -159,6 +172,7 @@ tr:hover td { background: #f8fffe; }
 .tab:hover { border-color: var(--accent); }
 .tab.active {
   background: linear-gradient(90deg, var(--primary), var(--accent));
+  background-origin: border-box;
   color: white;
   border-color: transparent;
 }
@@ -169,8 +183,8 @@ tr:hover td { background: #f8fffe; }
   border-radius: 8px;
   font-size: 0.9rem;
 }
-.alert-error   { background: #ffeef0; color: #d73a49; border: 1px solid #f97583; }
-.alert-success { background: var(--accent-light); color: #137a70; border: 1px solid var(--accent); }
+.alert-error   { background: var(--error-bg); color: var(--error-text); border: 1px solid #f97583; }
+.alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid #75f982; }
 
 .page-title { color: var(--primary-dark); }
 .muted { color: var(--muted); }
@@ -186,13 +200,13 @@ tr:hover td { background: #f8fffe; }
   color: #555;
 }
 .badge-placed    { background: #fff3cd; color: #8a6d00; }
-.badge-accepted  { background: var(--primary-light); color: var(--primary-dark); }
+.badge-accepted  { background: #cdf9ff; color: #0097ab; }
 .badge-preparing { background: #ffe4cc; color: #b45309; }
-.badge-ready     { background: var(--accent-light); color: var(--accent-dark); }
+.badge-ready     { background: var(--success-bg); color: var(--success-text); }
 .badge-picked_up,
-.badge-delivered { background: #d1fae5; color: #047857; }
+.badge-delivered { background: #d1dafa; color: #041578; }
 .badge-cancelled,
-.badge-rejected  { background: #fee2e2; color: #b91c1c; }
+.badge-rejected  { background: var(--error-bg); color: var(--error-text); }
 
 .navbar-user {
   margin-left: auto; 
@@ -203,3 +217,52 @@ tr:hover td { background: #f8fffe; }
   font-weight: 600;
 }
 .role-badge { background: rgba(255, 255, 255, 0.25); color: white; }
+
+th, td { white-space: nowrap; }
+
+.col-actions {
+  width: 170px; 
+  min-width: 170px;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--primary);
+  transform: scale(1.2);
+}
+
+.qty-input { width: 90px; }
+
+.restaurant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.sub-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: #fffdfe;
+  margin-bottom: 8px;
+}
+.sub-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.sub-card-header h3 { margin: 0; color: var(--accent-dark); }
+
+.form-row { margin-bottom: 16px; max-width: 360px; }
+.form-submit { margin-top: 16px; }
+.inline-form { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+.refresh-btn { margin-top: 12px; }
+
+
+.row-soldout td { color: var(--muted); }
+
+.badge-open, .badge-available { background: var(--success-bg); color: var(--success-text); }
+.badge-paused, .badge-closed, .badge-sold_out { background: var(--error-bg); color: var(--error-text); }

@@ -69,16 +69,7 @@ export const LoginPanel: React.FC<Props> = ({ onLoginSuccess, onError }) => {
       <button
         type="submit"
         disabled={loading}
-        style={{
-          width: '100%',
-          padding: '10px',
-          backgroundColor: '#0070f3',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '4px',
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}
+        className="btn btn-block"
       >
         {loading ? 'Logging in...' : 'Log In'}
       </button>

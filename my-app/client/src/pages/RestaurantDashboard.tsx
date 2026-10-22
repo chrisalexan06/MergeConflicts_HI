@@ -15,7 +15,7 @@ const actionsByStatus: Partial<Record<Order['orderStatus'], RestaurantOrderActio
 const actionLabels: Record<RestaurantOrderAction, string> = {
 	accept: 'Accept',
 	preparing: 'Start preparing',
-	ready: 'Mark ready',
+	ready: 'Mark as ready',
 	cancel: 'Cancel order',
 };
 
@@ -75,7 +75,7 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 					<th scope="col">Items</th>
 					<th scope="col">Total</th>
 					<th scope="col">Status</th>
-					<th scope="col">Actions</th>
+					<th scope="col" className="col-actions">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -83,7 +83,13 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 					<tr key={order.orderId}>
 						<td>#{order.orderId}</td>
 						<td>{new Date(order.createdAt).toLocaleString()}</td>
-						<td>{order.items.map((item) => `${item.quantity} x ${item.itemName}`).join(', ')}</td>
+						<td>
+							{order.items.map((item, i) => (
+								<div key={`${item.itemName}-${i}`}>
+								{item.quantity} x {item.itemName}
+								</div>
+							))}
+						</td>
 						<td>${order.total.toFixed(2)}</td>
 						<td>
 						<span className={`badge badge-${order.orderStatus}`}>{order.orderStatus}</span>
