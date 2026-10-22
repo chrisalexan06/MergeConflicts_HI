@@ -177,6 +177,8 @@ describe("PostgresOrderStore", () => {
 		assert.equal(await store.updateStatus(order, OrderStatus.PLACED), true);
 		assert.match(queryText, /"orderStatus" = \$4/);
 		assert.deepEqual(queryValues, ["81", "cancelled", order.updatedAt, "placed"]);
+		assert.match(queryText, /earlier\."orderStatus" = 'accepted'/);
+		assert.match(queryText, /earlier\.created_at, earlier\.order_id/);
 	});
 
 	it("reports a lost status race when no row matches the expected state", async () => {

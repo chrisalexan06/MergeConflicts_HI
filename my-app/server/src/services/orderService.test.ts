@@ -20,6 +20,7 @@ interface HarnessOptions {
 	itemRestaurantId?: string;
 	itemAvailable?: boolean;
 	existingOrder?: Order;
+	existingOrders?: Order[];
 	updateSucceeds?: boolean;
 }
 
@@ -30,9 +31,11 @@ function createHarness(options: HarnessOptions = {}) {
 	const persistedStatuses = new Map<string, OrderStatus>();
 	const createdOrders: Order[] = [];
 	let statusUpdateCount = 0;
-	if (options.existingOrder) {
-		savedOrders.set(options.existingOrder.id, options.existingOrder);
-		persistedStatuses.set(options.existingOrder.id, options.existingOrder.status);
+	for (const order of [options.existingOrder, ...(options.existingOrders ?? [])]) {
+		if (order) {
+			savedOrders.set(order.id, order);
+			persistedStatuses.set(order.id, order.status);
+		}
 	}
 
 	const dependencies: OrderServiceDependencies = {
@@ -189,6 +192,34 @@ describe("OrderService", () => {
 		assert.equal((await staff.service.acceptOrder(placedOrder.id)).status, OrderStatus.ACCEPTED);
 		assert.equal((await staff.service.startPreparingOrder(placedOrder.id)).status, OrderStatus.PREPARING);
 		assert.equal((await staff.service.markOrderReady(placedOrder.id)).status, OrderStatus.READY);
+	});
+
+	it("starts accepted orders in arrival order without blocking the next order on preparation capacity", async () => {
+		const firstOrder = new Order({
+			id: "order-1",
+			customerId: "customer-1",
+			restaurantId: "restaurant-1",
+			lines: [new OrderLine("item-1", "Cake", 4.5, 1)],
+			createdAt: new Date("2026-10-15T12:00:00Z"),
+		}, OrderStatus.ACCEPTED);
+		const secondOrder = new Order({
+			id: "order-2",
+			customerId: "customer-1",
+			restaurantId: "restaurant-1",
+			lines: [new OrderLine("item-1", "Cake", 4.5, 1)],
+			createdAt: new Date("2026-10-15T12:01:00Z"),
+		}, OrderStatus.ACCEPTED);
+		const staff = createHarness({
+			user: { id: "staff-1", role: Role.RESTAURANT, restaurantId: "restaurant-1" },
+			existingOrders: [secondOrder, firstOrder],
+		});
+
+		await assert.rejects(() => staff.service.startPreparingOrder(secondOrder.id), {
+			code: "CONFLICT",
+			message: "Accepted orders must be prepared in arrival order.",
+		});
+		assert.equal((await staff.service.startPreparingOrder(firstOrder.id)).status, OrderStatus.PREPARING);
+		assert.equal((await staff.service.startPreparingOrder(secondOrder.id)).status, OrderStatus.PREPARING);
 	});
 
 	it("restricts restaurant transitions to assigned staff and valid states", async () => {

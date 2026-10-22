@@ -129,7 +129,19 @@ export class PostgresOrderStore implements OrderRepository, OrderCatalog {
 		const result = await this.database.query(
 			`UPDATE public.orders
 			 SET "orderStatus" = $2, updated_at = $3
-			 WHERE order_id = $1 AND "orderStatus" = $4`,
+			 WHERE order_id = $1 AND "orderStatus" = $4
+			 AND (
+				 $2 <> 'preparing'
+				 OR $4 <> 'accepted'
+				 OR NOT EXISTS (
+					 SELECT 1
+					 FROM public.orders earlier
+					 JOIN public.orders target ON target.order_id = $1
+					 WHERE earlier."restaurantID" = target."restaurantID"
+					   AND earlier."orderStatus" = 'accepted'
+					   AND (earlier.created_at, earlier.order_id) < (target.created_at, target.order_id)
+				 )
+			 )`,
 			[order.id, domainStatusToDatabase(order.status), order.updatedAt, domainStatusToDatabase(expectedStatus)],
 		);
 		return result.rowCount === 1;
@@ -159,7 +171,7 @@ export class PostgresOrderStore implements OrderRepository, OrderCatalog {
 
 	async findByRestaurantId(restaurantId: string): Promise<Order[]> {
 		const result = await this.database.query<OrderRow>(
-			`${orderSelect} WHERE o."restaurantID" = $1 ORDER BY o.created_at DESC, l."orderLineID"`,
+			`${orderSelect} WHERE o."restaurantID" = $1 ORDER BY o.created_at, o.order_id, l."orderLineID"`,
 			[restaurantId],
 		);
 		const grouped = new Map<string, OrderRow[]>();

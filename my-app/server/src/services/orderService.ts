@@ -157,6 +157,7 @@
 				orderId,
 				OrderStatus.ACCEPTED,
 				(order) => order.startPreparing(),
+				true,
 			);
 		}
 
@@ -205,6 +206,7 @@
 			orderId: string,
 			expectedStatus: OrderStatus | OrderStatus[],
 			transition: (order: Order) => void,
+			enforcePreparationQueue = false,
 		): Promise<Order> {
 			const restaurantStaff = await this.requireRestaurantStaff();
 			const order = await this.dependencies.orders.findById(orderId);
@@ -214,6 +216,17 @@
 			const allowedStatuses = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
 			if (!allowedStatuses.includes(order.status)) {
 				throw new OrderServiceError("CONFLICT", `Order cannot be updated from ${order.status}.`);
+			}
+			if (enforcePreparationQueue) {
+				const acceptedOrders = (await this.dependencies.orders.findByRestaurantId(restaurantStaff.restaurantId))
+					.filter((restaurantOrder) => restaurantOrder.status === OrderStatus.ACCEPTED)
+					.sort((first, second) =>
+						first.createdAt.getTime() - second.createdAt.getTime()
+						|| first.id.localeCompare(second.id, undefined, { numeric: true }),
+					);
+				if (acceptedOrders[0]?.id !== order.id) {
+					throw new OrderServiceError("CONFLICT", "Accepted orders must be prepared in arrival order.");
+				}
 			}
 
 			const previousStatus = order.status;
