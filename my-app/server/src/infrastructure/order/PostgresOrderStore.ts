@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { Order } from "../../domain/ORD/Order.js";
+import { Order, type OrderStatusChange } from "../../domain/ORD/Order.js";
 import { OrderLine } from "../../domain/ORD/OrderLine.js";
 import { OrderStatus } from "../../domain/ORD/OrderStatus.js";
 import type { MenuItem, NewOrderDetails, OrderCatalog, OrderRepository, Restaurant } from "../../services/orderService.js";
@@ -82,6 +82,8 @@ const orderSelect = `
 `;
 
 export class PostgresOrderStore implements OrderRepository, OrderCatalog {
+	private readonly persistedTransitionCounts = new WeakMap<Order, number>();
+
 	constructor(private readonly database: Pool) {}
 
 	async create(order: NewOrderDetails): Promise<Order> {
@@ -125,26 +127,74 @@ export class PostgresOrderStore implements OrderRepository, OrderCatalog {
 		}
 	}
 
-	async updateStatus(order: Order, expectedStatus: OrderStatus): Promise<boolean> {
-		const result = await this.database.query(
-			`UPDATE public.orders
-			 SET "orderStatus" = $2, updated_at = $3
-			 WHERE order_id = $1 AND "orderStatus" = $4
-			 AND (
-				 $2 <> 'preparing'
-				 OR $4 <> 'accepted'
-				 OR NOT EXISTS (
-					 SELECT 1
-					 FROM public.orders earlier
-					 JOIN public.orders target ON target.order_id = $1
-					 WHERE earlier."restaurantID" = target."restaurantID"
-					   AND earlier."orderStatus" = 'accepted'
-					   AND (earlier.created_at, earlier.order_id) < (target.created_at, target.order_id)
-				 )
-			 )`,
-			[order.id, domainStatusToDatabase(order.status), order.updatedAt, domainStatusToDatabase(expectedStatus)],
-		);
-		return result.rowCount === 1;
+	async updateStatus(
+		order: Order,
+		expectedStatus: OrderStatus,
+		observedTransitions?: ReadonlyArray<OrderStatusChange>,
+	): Promise<boolean> {
+		const client = await this.database.connect();
+		const persistedCount = this.persistedTransitionCounts.get(order) ?? 0;
+		const transitions = observedTransitions ?? order.transitionEvents.slice(persistedCount);
+
+		try {
+			await client.query("BEGIN");
+			const result = await client.query(
+				`UPDATE public.orders
+				 SET "orderStatus" = $2, updated_at = $3
+				 WHERE order_id = $1 AND "orderStatus" = $4
+				 AND (
+					 $2 <> 'preparing'
+					 OR $4 <> 'accepted'
+					 OR NOT EXISTS (
+						 SELECT 1
+						 FROM public.orders earlier
+						 JOIN public.orders target ON target.order_id = $1
+						 WHERE earlier."restaurantID" = target."restaurantID"
+						   AND earlier."orderStatus" = 'accepted'
+						   AND (earlier.created_at, earlier.order_id) < (target.created_at, target.order_id)
+					 )
+				 )`,
+				[order.id, domainStatusToDatabase(order.status), order.updatedAt, domainStatusToDatabase(expectedStatus)],
+			);
+			if (result.rowCount !== 1) {
+				await client.query("ROLLBACK");
+				return false;
+			}
+
+			for (const transition of transitions) {
+				await client.query(
+					`INSERT INTO public.order_events
+						(order_id, event_type, from_status, to_status, event_timestamp)
+					 VALUES ($1, $2, $3, $4, $5)`,
+					[
+						transition.orderId,
+						"status_transition",
+						domainStatusToDatabase(transition.previousStatus),
+						domainStatusToDatabase(transition.status),
+						transition.occurredAt,
+					],
+				);
+			}
+
+			await client.query("COMMIT");
+			this.persistedTransitionCounts.set(
+				order,
+				observedTransitions ? order.transitionEvents.length : persistedCount + transitions.length,
+			);
+			return true;
+		} catch (error) {
+			try {
+				await client.query("ROLLBACK");
+			} catch (rollbackError) {
+				throw new AggregateError(
+					[error, rollbackError],
+					"Order status persistence failed and the transaction could not be rolled back.",
+				);
+			}
+			throw error;
+		} finally {
+			client.release();
+		}
 	}
 
 	async findById(orderId: string): Promise<Order | null> {
@@ -216,6 +266,27 @@ export class PostgresOrderStore implements OrderRepository, OrderCatalog {
 			name: item.itemName,
 			unitPrice: Number(item.itemPrice),
 			isAvailable: item.itemStatus.trim().toLowerCase() === "available",
+		} : null;
+	}
+
+	async findCustomerProfile(customerId: string): Promise<{
+		deliveryAddress: string;
+		city: string;
+		country: string;
+	} | null> {
+		const result = await this.database.query<{
+			deliveryAddress: string | null;
+			city: string | null;
+			country: string | null;
+		}>(
+			`SELECT "deliveryAddress", city, country FROM public."Customer" WHERE "accountID" = $1`,
+			[customerId],
+		);
+		const profile = result.rows[0];
+		return profile ? {
+			deliveryAddress: profile.deliveryAddress ?? '',
+			city: profile.city ?? '',
+			country: profile.country ?? '',
 		} : null;
 	}
 }

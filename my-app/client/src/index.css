@@ -186,6 +186,29 @@ tr:hover td { background: #f8fffe; }
 .alert-error   { background: var(--error-bg); color: var(--error-text); border: 1px solid #f97583; }
 .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid #75f982; }
 
+.customer-profile-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.customer-profile-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.customer-profile-fields .form-row {
+  max-width: none;
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .customer-profile-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 .page-title { color: var(--primary-dark); }
 .muted { color: var(--muted); }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Role } from "../domain/REG/Role.js";
 import { Order } from "../domain/ORD/Order.js";
+import type { OrderStatusChange } from "../domain/ORD/Order.js";
 import { OrderLine } from "../domain/ORD/OrderLine.js";
 import { OrderStatus } from "../domain/ORD/OrderStatus.js";
 import {
@@ -14,6 +15,7 @@ import {
 
 interface HarnessOptions {
 	user?: AuthenticatedUser | null;
+	customerProfile?: { deliveryAddress: string; city: string; country: string } | null;
 	restaurantExists?: boolean;
 	restaurantOpen?: boolean;
 	itemExists?: boolean;
@@ -30,6 +32,7 @@ function createHarness(options: HarnessOptions = {}) {
 	const savedOrders = new Map<string, Order>();
 	const persistedStatuses = new Map<string, OrderStatus>();
 	const createdOrders: Order[] = [];
+	const persistedTransitions: OrderStatusChange[] = [];
 	let statusUpdateCount = 0;
 	for (const order of [options.existingOrder, ...(options.existingOrders ?? [])]) {
 		if (order) {
@@ -41,6 +44,13 @@ function createHarness(options: HarnessOptions = {}) {
 	const dependencies: OrderServiceDependencies = {
 		authentication: { getCurrentUser: async () => user },
 		catalog: {
+			findCustomerProfile: async () => options.customerProfile === undefined
+				? {
+					deliveryAddress: "1455 De Maisonneuve Blvd W",
+					city: "Paris",
+					country: "France",
+				}
+				: options.customerProfile,
 			findRestaurant: async (id) => options.restaurantExists !== false && id === "restaurant-1"
 				? { id, isOpen: options.restaurantOpen ?? true }
 				: null,
@@ -66,11 +76,12 @@ function createHarness(options: HarnessOptions = {}) {
 				persistedStatuses.set(order.id, order.status);
 				return order;
 			},
-			updateStatus: async (order, expectedStatus) => {
+			updateStatus: async (order, expectedStatus, transitionEvents) => {
 				statusUpdateCount += 1;
 				if (options.updateSucceeds === false || persistedStatuses.get(order.id) !== expectedStatus) {
 					return false;
 				}
+				persistedTransitions.push(...(transitionEvents ?? []));
 				savedOrders.set(order.id, order);
 				persistedStatuses.set(order.id, order.status);
 				return true;
@@ -84,6 +95,7 @@ function createHarness(options: HarnessOptions = {}) {
 	return {
 		service: new OrderService(dependencies),
 		createdOrders,
+		persistedTransitions,
 		savedOrders,
 		get statusUpdateCount() {
 			return statusUpdateCount;
@@ -108,6 +120,24 @@ describe("OrderService", () => {
 		assert.equal(order.total, 9);
 		assert.equal(order.customerId, "customer-1");
 		assert.equal(harness.createdOrders.length, 1);
+	});
+
+	it("requires a saved delivery address before creating an order", async () => {
+		for (const customerProfile of [
+			{ deliveryAddress: "", city: "Paris", country: "France" },
+			{ deliveryAddress: "123 Main St", city: "Paris", country: "France" },
+			{ deliveryAddress: "1 Main St", city: "", country: "France" },
+			{ deliveryAddress: "1 Main St", city: "Paris", country: "" },
+			{ deliveryAddress: "1 Main St", city: "Montreal", country: "Canada" },
+		]) {
+			const harness = createHarness({ customerProfile });
+
+			await assert.rejects(
+				() => harness.service.placeOrder(validRequest),
+				{ code: "CONFLICT", message: "Complete and save your delivery address, city, and country before ordering." },
+			);
+			assert.equal(harness.createdOrders.length, 0);
+		}
 	});
 
 	it("rejects unauthenticated users and non-customer roles", async () => {
@@ -163,6 +193,10 @@ describe("OrderService", () => {
 		const order = await harness.service.placeOrder(validRequest);
 
 		assert.equal((await harness.service.cancelOrder(order.id)).status, OrderStatus.CANCELLED);
+		assert.deepEqual(
+			harness.persistedTransitions.map(({ previousStatus, status }) => [previousStatus, status]),
+			[[OrderStatus.PLACED, OrderStatus.CANCELLED]],
+		);
 		await assert.rejects(() => harness.service.cancelOrder(order.id), { code: "CONFLICT" });
 	});
 
@@ -192,6 +226,14 @@ describe("OrderService", () => {
 		assert.equal((await staff.service.acceptOrder(placedOrder.id)).status, OrderStatus.ACCEPTED);
 		assert.equal((await staff.service.startPreparingOrder(placedOrder.id)).status, OrderStatus.PREPARING);
 		assert.equal((await staff.service.markOrderReady(placedOrder.id)).status, OrderStatus.READY);
+		assert.deepEqual(
+			staff.persistedTransitions.map(({ previousStatus, status }) => [previousStatus, status]),
+			[
+				[OrderStatus.PLACED, OrderStatus.ACCEPTED],
+				[OrderStatus.ACCEPTED, OrderStatus.PREPARING],
+				[OrderStatus.PREPARING, OrderStatus.READY],
+			],
+		);
 	});
 
 	it("starts accepted orders in arrival order without blocking the next order on preparation capacity", async () => {

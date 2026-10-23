@@ -34,9 +34,47 @@ describe('Order domain', () => {
     assert.ok(order.updatedAt.getTime() >= previousUpdatedAt.getTime());
   });
 
+  it('notifies observers with a timestamped event for each valid transition', () => {
+    const order = createOrder();
+    const changes: Array<{
+      orderId: string;
+      previousStatus: OrderStatus;
+      status: OrderStatus;
+      occurredAt: Date;
+    }> = [];
+    const unsubscribe = order.subscribe({
+      onStatusChanged: (change) => changes.push(change),
+    });
+
+    order.accept();
+    order.startPreparing();
+    order.markReady();
+    unsubscribe();
+
+    assert.deepEqual(
+      changes.map(({ previousStatus, status }) => [previousStatus, status]),
+      [
+        [OrderStatus.PLACED, OrderStatus.ACCEPTED],
+        [OrderStatus.ACCEPTED, OrderStatus.PREPARING],
+        [OrderStatus.PREPARING, OrderStatus.READY],
+      ],
+    );
+    assert.ok(changes.every((change) => change.orderId === order.id && change.occurredAt instanceof Date));
+    assert.deepEqual(
+      order.transitionEvents.map(({ previousStatus, status }) => [previousStatus, status]),
+      [
+        [OrderStatus.PLACED, OrderStatus.ACCEPTED],
+        [OrderStatus.ACCEPTED, OrderStatus.PREPARING],
+        [OrderStatus.PREPARING, OrderStatus.READY],
+      ],
+    );
+  });
+
   it('rejects invalid quantities and illegal transitions', () => {
     assert.throws(() => new OrderLine('item-1', 'Cake', 4.5, 0), /positive integer/);
-    assert.throws(() => createOrder().markReady(), /Cannot change order status/);
+    const order = createOrder();
+    assert.throws(() => order.markReady(), /Cannot change order status/);
+    assert.equal(order.transitionEvents.length, 0);
   });
 
   it('allows cancellation only before restaurant acceptance', () => {
