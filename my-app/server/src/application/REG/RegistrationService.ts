@@ -28,6 +28,15 @@ export class RegistrationService {
   ): Promise<Account> {
     this.validateRequiredFields(accountName, password, email, role);
 
+    if (role === Role.RESTAURANT) {
+      const selectedRestaurantId = extraData?.restaurantID;
+      if (typeof selectedRestaurantId !== 'number'
+        || !Number.isSafeInteger(selectedRestaurantId)
+        || selectedRestaurantId <= 0) {
+        throw new Error('Select a restaurant for this account.');
+      }
+    }
+
     const isDuplicate = await this.isUsernameDuplicate(accountName);
     if (isDuplicate) {
       throw new Error(`Username '${accountName}' is already taken.`);
@@ -36,6 +45,24 @@ export class RegistrationService {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      let restaurantId: number | undefined;
+      if (role === Role.RESTAURANT) {
+        const selectedRestaurantId = extraData?.restaurantID;
+        if (typeof selectedRestaurantId !== 'number'
+          || !Number.isSafeInteger(selectedRestaurantId)
+          || selectedRestaurantId <= 0) {
+          throw new Error('Select a restaurant for this account.');
+        }
+        restaurantId = selectedRestaurantId;
+        const restaurantResult = await client.query(
+          'SELECT 1 FROM public."Restaurant" WHERE "restaurantID" = $1 FOR KEY SHARE;',
+          [restaurantId]
+        );
+        if (restaurantResult.rows.length === 0) {
+          throw new Error('The selected restaurant does not exist.');
+        }
+      }
 
       const insertAccountQuery = `
         INSERT INTO public."Account" ("accountName", "password", "email", "role")
@@ -68,18 +95,15 @@ export class RegistrationService {
         }
 
         case Role.RESTAURANT: {
-          let restoID = extraData?.restaurantID;
-          if (!restoID) {
-            const defaultResto = await client.query('SELECT "restaurantID" FROM public."Restaurant" LIMIT 1;');
-            restoID = defaultResto.rows.length > 0 ? Number(defaultResto.rows[0].restaurantID) : 1;
+          if (restaurantId === undefined) {
+            throw new Error('Select a restaurant for this account.');
           }
-
           await client.query(
             `INSERT INTO public."RestaurantStaff" ("accountID", "restaurantID")
              VALUES ($1, $2);`,
-            [accountID, restoID]
+            [accountID, restaurantId]
           );
-          createdAccount = new RestaurantStaffAccount(accountID, accountName, password, email, restoID);
+          createdAccount = new RestaurantStaffAccount(accountID, accountName, password, email, restaurantId);
           break;
         }
 

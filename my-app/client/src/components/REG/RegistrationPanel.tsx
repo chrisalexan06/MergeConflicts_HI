@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+
+interface RestaurantOption {
+  restaurantId: number;
+  restaurantName: string;
+}
 
 interface Props {
   onSuccess: (message: string) => void;
@@ -10,6 +15,52 @@ export const RegistrationPanel: React.FC<Props> = ({ onSuccess, onError }) => {
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('customer');
+  const [restaurants, setRestaurants] = useState<RestaurantOption[]>([]);
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState('');
+  const [restaurantsLoading, setRestaurantsLoading] = useState(false);
+  const [restaurantLoadError, setRestaurantLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (role !== 'restaurant') {
+      return;
+    }
+
+    const controller = new AbortController();
+    setRestaurantsLoading(true);
+    setRestaurantLoadError(null);
+
+    async function loadRestaurants() {
+      try {
+        const response = await fetch('http://localhost:3000/api/restaurants', {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Could not load restaurants (HTTP ${response.status}).`);
+        }
+
+        const availableRestaurants: RestaurantOption[] = await response.json();
+        setRestaurants(availableRestaurants);
+        setSelectedRestaurantId((currentId) => (
+          availableRestaurants.some((restaurant) => String(restaurant.restaurantId) === currentId)
+            ? currentId
+            : ''
+        ));
+      } catch (error: unknown) {
+        if (!controller.signal.aborted) {
+          setRestaurants([]);
+          setSelectedRestaurantId('');
+          setRestaurantLoadError(error instanceof Error ? error.message : 'Could not load restaurants.');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setRestaurantsLoading(false);
+        }
+      }
+    }
+
+    void loadRestaurants();
+    return () => controller.abort();
+  }, [role]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +75,9 @@ export const RegistrationPanel: React.FC<Props> = ({ onSuccess, onError }) => {
           password,
           email: email.trim(),
           role,
+          ...(role === 'restaurant' && {
+            extraData: { restaurantID: Number(selectedRestaurantId) },
+          }),
         }),
       });
 
@@ -37,8 +91,9 @@ export const RegistrationPanel: React.FC<Props> = ({ onSuccess, onError }) => {
       setAccountName('');
       setPassword('');
       setEmail('');
-    } catch (err: any) {
-      onError(err.message || 'Network request failed');
+      setSelectedRestaurantId('');
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : 'Network request failed');
     }
   };
 
@@ -105,9 +160,41 @@ export const RegistrationPanel: React.FC<Props> = ({ onSuccess, onError }) => {
         </select>
       </div>
 
+      {role === 'restaurant' && (
+        <div style={{ marginBottom: '16px' }}>
+          <label htmlFor="registration-restaurant" style={{ display: 'block', fontWeight: 600, marginBottom: '4px' }}>
+            Restaurant
+          </label>
+          <select
+            id="registration-restaurant"
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+            value={selectedRestaurantId}
+            onChange={(e) => setSelectedRestaurantId(e.target.value)}
+            required
+            disabled={restaurantsLoading || restaurants.length === 0}
+          >
+            <option value="">
+              {restaurantsLoading ? 'Loading restaurants...' : 'Select your restaurant'}
+            </option>
+            {restaurants.map((restaurant) => (
+              <option key={restaurant.restaurantId} value={restaurant.restaurantId}>
+                {restaurant.restaurantName}
+              </option>
+            ))}
+          </select>
+          {restaurantLoadError && <p role="alert">{restaurantLoadError}</p>}
+          {!restaurantsLoading && !restaurantLoadError && restaurants.length === 0 && (
+            <p role="alert">No restaurants are available for registration.</p>
+          )}
+        </div>
+      )}
+
       <button
         type="submit"
         className="btn btn-block"
+        disabled={role === 'restaurant' && (
+          restaurantsLoading || restaurants.length === 0 || !selectedRestaurantId
+        )}
       >
         Register
       </button>

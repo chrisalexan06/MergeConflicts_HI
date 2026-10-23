@@ -58,7 +58,36 @@
           }
         ]
       }
-    }
+    },
+    {
+  "restaurantId": 3,
+  "restaurantName": "Mile End Sweet Kitchen",
+  "status": "open",
+  "latitude": 45.5230,
+  "longitude": -73.5980,
+  "menu": {
+    "items": [
+      {
+        "itemId": 301,
+        "itemName": "Pistachio Croissant",
+        "price": 6.25,
+        "status": "available"
+      },
+      {
+        "itemId": 302,
+        "itemName": "Chocolate Mousse",
+        "price": 7.0,
+        "status": "available"
+      },
+      {
+        "itemId": 303,
+        "itemName": "Raspberry Macaron Box",
+        "price": 11.5,
+        "status": "available"
+      }
+    ]
+  }
+}
   ],
   "couriers": [
     {

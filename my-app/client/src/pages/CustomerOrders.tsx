@@ -89,7 +89,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
     async function loadRestaurants() {
       try {
-        const response = await fetch('http://localhost:3000/api/test/restaurants', {
+        const response = await fetch('http://localhost:3000/api/restaurants', {
           signal: controller.signal,
         });
 
