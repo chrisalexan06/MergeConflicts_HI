@@ -1,10 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { RegistrationService } from '../application/REG/RegistrationService.js';
 import {AuthenticationService} from '../application/REG/AuthenticationService.js';
+import { Role } from '../domain/REG/Role.js';
 
 const router = Router();
 const registrationService = new RegistrationService();
 const authService = new AuthenticationService(registrationService);
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
 
 // POST /api/auth/register
 router.post('/register', async (req: Request, res: Response) => {
@@ -57,6 +62,72 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(401).json({ error: error.message });
+  }
+});
+
+router.get('/customer-address', async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+  const account = token ? authService.getCurrentUser(token) : null;
+  if (!account) {
+    res.status(401).json({ error: 'Unauthorized.' });
+    return;
+  }
+  if (account.role !== Role.CUSTOMER) {
+    res.status(403).json({ error: 'Only customers can manage delivery details.' });
+    return;
+  }
+
+  try {
+    const customerProfile = await registrationService.findCustomerProfile(account.accountID);
+    if (customerProfile === null) {
+      res.status(404).json({ error: 'Customer profile was not found.' });
+      return;
+    }
+    res.json(customerProfile);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Could not load customer profile.' });
+  }
+});
+
+router.put('/customer-address', async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+  const account = token ? authService.getCurrentUser(token) : null;
+  if (!account) {
+    res.status(401).json({ error: 'Unauthorized.' });
+    return;
+  }
+  if (account.role !== Role.CUSTOMER) {
+    res.status(403).json({ error: 'Only customers can manage delivery details.' });
+    return;
+  }
+
+  const { deliveryAddress, city, country }: {
+    deliveryAddress?: unknown;
+    city?: unknown;
+    country?: unknown;
+  } = req.body ?? {};
+  if (!isNonEmptyString(deliveryAddress) || !isNonEmptyString(city) || !isNonEmptyString(country)) {
+    res.status(400).json({ error: 'Enter a delivery address, city, and country.' });
+    return;
+  }
+
+  try {
+    const updated = await registrationService.updateCustomerProfile(account.accountID, {
+      deliveryAddress,
+      city,
+      country,
+    });
+    if (!updated) {
+      res.status(404).json({ error: 'Customer profile was not found.' });
+      return;
+    }
+    res.json({
+      deliveryAddress: deliveryAddress.trim(),
+      city: city.trim(),
+      country: country.trim(),
+    });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Could not save customer profile.' });
   }
 });
 

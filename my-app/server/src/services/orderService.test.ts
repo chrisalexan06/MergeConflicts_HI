@@ -15,6 +15,7 @@ import {
 
 interface HarnessOptions {
 	user?: AuthenticatedUser | null;
+	customerProfile?: { deliveryAddress: string; city: string; country: string } | null;
 	restaurantExists?: boolean;
 	restaurantOpen?: boolean;
 	itemExists?: boolean;
@@ -43,6 +44,13 @@ function createHarness(options: HarnessOptions = {}) {
 	const dependencies: OrderServiceDependencies = {
 		authentication: { getCurrentUser: async () => user },
 		catalog: {
+			findCustomerProfile: async () => options.customerProfile === undefined
+				? {
+					deliveryAddress: "1455 De Maisonneuve Blvd W",
+					city: "Paris",
+					country: "France",
+				}
+				: options.customerProfile,
 			findRestaurant: async (id) => options.restaurantExists !== false && id === "restaurant-1"
 				? { id, isOpen: options.restaurantOpen ?? true }
 				: null,
@@ -112,6 +120,24 @@ describe("OrderService", () => {
 		assert.equal(order.total, 9);
 		assert.equal(order.customerId, "customer-1");
 		assert.equal(harness.createdOrders.length, 1);
+	});
+
+	it("requires a saved delivery address before creating an order", async () => {
+		for (const customerProfile of [
+			{ deliveryAddress: "", city: "Paris", country: "France" },
+			{ deliveryAddress: "123 Main St", city: "Paris", country: "France" },
+			{ deliveryAddress: "1 Main St", city: "", country: "France" },
+			{ deliveryAddress: "1 Main St", city: "Paris", country: "" },
+			{ deliveryAddress: "1 Main St", city: "Montreal", country: "Canada" },
+		]) {
+			const harness = createHarness({ customerProfile });
+
+			await assert.rejects(
+				() => harness.service.placeOrder(validRequest),
+				{ code: "CONFLICT", message: "Complete and save your delivery address, city, and country before ordering." },
+			);
+			assert.equal(harness.createdOrders.length, 0);
+		}
 	});
 
 	it("rejects unauthenticated users and non-customer roles", async () => {

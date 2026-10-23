@@ -4,7 +4,10 @@ import {
   CustomerAccount,
   RestaurantStaffAccount,
   CourierAccount,
-  OperatorAccount
+  OperatorAccount,
+  hasDeliveryAddress,
+  hasDeliveryCity,
+  hasDeliveryCountry
 } from '../../domain/REG/Account.js';
 import { Role } from '../../domain/REG/Role.js';
 
@@ -51,9 +54,9 @@ export class RegistrationService {
 
       switch (role) {
         case Role.CUSTOMER: {
-          const address = extraData?.deliveryAddress || '123 Main St';
-          const city = extraData?.city || 'Montreal';
-          const country = extraData?.country || 'Canada';
+          const address = extraData?.deliveryAddress?.trim() ?? '';
+          const city = extraData?.city?.trim() ?? '';
+          const country = extraData?.country?.trim() ?? '';
 
           await client.query(
             `INSERT INTO public."Customer" ("accountID", "deliveryAddress", "city", "country")
@@ -140,6 +143,50 @@ export class RegistrationService {
     const result = await pool.query(query, [accountID]);
     if (result.rows.length === 0) return null;
     return this.mapRowToDomain(result.rows[0]);
+  }
+
+  public async findCustomerProfile(accountID: number): Promise<{
+    deliveryAddress: string;
+    city: string;
+    country: string;
+  } | null> {
+    const result = await pool.query<{
+      deliveryAddress: string | null;
+      city: string | null;
+      country: string | null;
+    }>(
+      'SELECT "deliveryAddress", city, country FROM public."Customer" WHERE "accountID" = $1 LIMIT 1;',
+      [accountID]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+    const address = row.deliveryAddress ?? '';
+    const city = row.city ?? '';
+    const country = row.country ?? '';
+    return {
+      deliveryAddress: hasDeliveryAddress(address) ? address.trim() : '',
+      city: hasDeliveryCity(city) ? city.trim() : '',
+      country: hasDeliveryCountry(country) ? country.trim() : '',
+    };
+  }
+
+  public async updateCustomerProfile(
+    accountID: number,
+    profile: { deliveryAddress: string; city: string; country: string }
+  ): Promise<boolean> {
+    const address = profile.deliveryAddress.trim();
+    const city = profile.city.trim();
+    const country = profile.country.trim();
+    if (!hasDeliveryAddress(address) || !hasDeliveryCity(city) || !hasDeliveryCountry(country)) {
+      throw new Error('Delivery address, city, and country are required.');
+    }
+    const result = await pool.query(
+      'UPDATE public."Customer" SET "deliveryAddress" = $2, city = $3, country = $4 WHERE "accountID" = $1;',
+      [accountID, address, city, country]
+    );
+    return result.rowCount === 1;
   }
 
   public async findAccountByName(accountName: string): Promise<Account | null> {

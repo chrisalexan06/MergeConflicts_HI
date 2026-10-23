@@ -268,4 +268,25 @@ export class PostgresOrderStore implements OrderRepository, OrderCatalog {
 			isAvailable: item.itemStatus.trim().toLowerCase() === "available",
 		} : null;
 	}
+
+	async findCustomerProfile(customerId: string): Promise<{
+		deliveryAddress: string;
+		city: string;
+		country: string;
+	} | null> {
+		const result = await this.database.query<{
+			deliveryAddress: string | null;
+			city: string | null;
+			country: string | null;
+		}>(
+			`SELECT "deliveryAddress", city, country FROM public."Customer" WHERE "accountID" = $1`,
+			[customerId],
+		);
+		const profile = result.rows[0];
+		return profile ? {
+			deliveryAddress: profile.deliveryAddress ?? '',
+			city: profile.city ?? '',
+			country: profile.country ?? '',
+		} : null;
+	}
 }

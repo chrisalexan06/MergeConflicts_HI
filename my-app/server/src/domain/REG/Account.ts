@@ -1,4 +1,24 @@
 import { Role } from './Role.js';
+//should add logic to convert all three to longitute and latitude and store in the database, also use as a check if it exists and then
+//can check if it is a real address =? google api?
+export function hasDeliveryAddress(address: string | null | undefined): boolean {
+  const normalizedAddress = address?.trim().toLowerCase();
+  return Boolean(normalizedAddress)
+    && normalizedAddress !== '123 main st'
+    && normalizedAddress !== 'montreal default st';
+}
+
+export function hasDeliveryCity(city: string | null | undefined): boolean {
+  const normalizedCity = city?.trim().toLowerCase();
+  return Boolean(normalizedCity)
+    && normalizedCity !== 'city';
+}
+
+export function hasDeliveryCountry(country: string | null | undefined): boolean {
+  const normalizedCountry = country?.trim().toLowerCase();
+  return Boolean(normalizedCountry)
+    && normalizedCountry !== 'country';
+}
 
 export abstract class Account {
   public readonly accountID: number;
@@ -31,9 +51,9 @@ export class CustomerAccount extends Account {
     accountName: string,
     password: string,
     email: string,
-    deliveryAddress = 'Montreal Default St',
-    city = 'Montreal',
-    country = 'Canada',
+    deliveryAddress = '',
+    city = '',
+    country = '',
     latitude?: number,
     longitude?: number
   ) {

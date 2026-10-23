@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { cancelOrder, getCustomerOrder, listCustomerOrders, placeOrder } from '../api/orders';
+import { getCustomerProfile, saveCustomerProfile, type CustomerProfile } from '../api/customerProfile';
 import { CustomerCurrentOrders } from '../ui/CustomerCurrentOrders';
 import type { Order } from '../types/order';
 
@@ -25,6 +26,8 @@ interface CustomerOrdersProps {
   token: string;
 }
 
+const emptyCustomerProfile: CustomerProfile = { deliveryAddress: '', city: '', country: '' };
+
 export default function CustomerOrders({ token }: CustomerOrdersProps) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -40,6 +43,46 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
   const [error, setError] = useState<string | null>(null);
   const [orderResult, setOrderResult] = useState<string | null>(null);
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfile>(emptyCustomerProfile);
+  const [savedCustomerProfile, setSavedCustomerProfile] = useState<CustomerProfile | null>(null);
+  const [loadedProfileToken, setLoadedProfileToken] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const profileLoading = loadedProfileToken !== token;
+  const profileComplete = Boolean(
+    customerProfile.deliveryAddress.trim()
+    && customerProfile.city.trim()
+    && customerProfile.country.trim()
+  );
+  const profileIsSaved = profileComplete
+    && savedCustomerProfile?.deliveryAddress === customerProfile.deliveryAddress.trim()
+    && savedCustomerProfile.city === customerProfile.city.trim()
+    && savedCustomerProfile.country === customerProfile.country.trim();
+
+  useEffect(() => {
+    let active = true;
+
+    void getCustomerProfile(token)
+      .then((profile) => {
+        if (active) {
+          setCustomerProfile(profile);
+          setSavedCustomerProfile(profile);
+          setProfileError(null);
+        }
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setCustomerProfile(emptyCustomerProfile);
+          setSavedCustomerProfile(null);
+          setProfileError(requestError instanceof Error ? requestError.message : 'Could not load customer profile.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoadedProfileToken(token);
+      });
+
+    return () => { active = false; };
+  }, [token]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -92,6 +135,10 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
   async function handlePlaceOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!profileIsSaved) {
+      setProfileError('Complete and save your delivery address, city, and country before placing an order.');
+      return;
+    }
     setPlacingOrder(true);
     setOrderResult(null);
 
@@ -105,8 +152,8 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
     try {
         if (selectedRestaurantId === null) {
           setOrderResult('Select a restaurant before placing an order.');
-        return;
-      }
+          return;
+        }
 
         const order = await placeOrder(token, { restaurantId: selectedRestaurantId, orderLines });
         setOrderResult(`Order placed successfully. Order ID: ${order.orderId}`);
@@ -117,6 +164,31 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
       );
     } finally {
       setPlacingOrder(false);
+    }
+  }
+
+  async function handleSaveCustomerProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const profile = {
+      deliveryAddress: customerProfile.deliveryAddress.trim(),
+      city: customerProfile.city.trim(),
+      country: customerProfile.country.trim(),
+    };
+    if (!profile.deliveryAddress || !profile.city || !profile.country) {
+      setProfileError('Enter a delivery address, city, and country.');
+      return;
+    }
+
+    setSavingProfile(true);
+    setProfileError(null);
+    try {
+      const savedProfile = await saveCustomerProfile(token, profile);
+      setCustomerProfile(savedProfile);
+      setSavedCustomerProfile(savedProfile);
+    } catch (requestError) {
+      setProfileError(requestError instanceof Error ? requestError.message : 'Could not save customer profile.');
+    } finally {
+      setSavingProfile(false);
     }
   }
 
@@ -155,10 +227,12 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
     <main>
       {loading && <p className="muted">Loading restaurant data...</p>}
       {error && <div role="alert" className="alert alert-error">Error loading restaurant data: {error}</div>}
+      {profileLoading && <p className="muted">Loading your customer profile...</p>}
+      {profileError && <div role="alert" className="alert alert-error">{profileError}</div>}
 
       {!loading && !error && (
         <>
-          //browse restaurants
+          {/* browse restaurants */}
           <section className="card">
             <h2 className="page-title">Restaurants</h2>
             {restaurants.length === 0 ? (
@@ -196,9 +270,63 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
             )}
           </section>
 
-          //place an order
+          {/* place an order */}
           <section className="card">
             <h2 className="page-title">Place an order</h2>
+            <form onSubmit={handleSaveCustomerProfile} className="customer-profile-form">
+              <h3>Delivery details</h3>
+              <div className="customer-profile-fields">
+                <div className="form-row">
+                  <label htmlFor="delivery-address">Delivery address</label>
+                  <input
+                    id="delivery-address"
+                    autoComplete="street-address"
+                    value={customerProfile.deliveryAddress}
+                    onChange={(event) => setCustomerProfile((profile) => ({
+                      ...profile,
+                      deliveryAddress: event.target.value,
+                    }))}
+                    disabled={profileLoading || savingProfile}
+                    required
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="delivery-city">City</label>
+                  <input
+                    id="delivery-city"
+                    autoComplete="address-level2"
+                    value={customerProfile.city}
+                    onChange={(event) => setCustomerProfile((profile) => ({
+                      ...profile,
+                      city: event.target.value,
+                    }))}
+                    disabled={profileLoading || savingProfile}
+                    required
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="delivery-country">Country</label>
+                  <input
+                    id="delivery-country"
+                    autoComplete="country-name"
+                    value={customerProfile.country}
+                    onChange={(event) => setCustomerProfile((profile) => ({
+                      ...profile,
+                      country: event.target.value,
+                    }))}
+                    disabled={profileLoading || savingProfile}
+                    required
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="btn btn-secondary"
+                disabled={profileLoading || savingProfile || !profileComplete}
+              >
+                {savingProfile ? 'Saving delivery details...' : profileIsSaved ? 'Delivery details saved' : 'Save delivery details'}
+              </button>
+            </form>
             {restaurants.length === 0 ? (
               <p className="muted">Ordering is unavailable because no restaurants were loaded.</p>
             ) : (
@@ -287,7 +415,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                 <button
                   type="submit"
                   className="btn form-submit"
-                  disabled={placingOrder || selectedRestaurantId === null}
+                  disabled={placingOrder || profileLoading || !profileIsSaved || selectedRestaurantId === null}
                 >
                   {placingOrder ? 'Placing order...' : 'Place order'}
                 </button>
@@ -303,7 +431,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
             )}
           </section>
 
-          //track order
+          {/* track order */}
           <section className="card" aria-labelledby="track-order-heading">
             <h2 id="track-order-heading" className="page-title">Track an order</h2>
             <form onSubmit={handleTrackOrderSubmit} className="inline-form">

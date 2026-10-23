@@ -1,4 +1,5 @@
 	import { Role } from "../domain/REG/Role.js";
+	import { hasDeliveryAddress, hasDeliveryCity, hasDeliveryCountry } from "../domain/REG/Account.js";
 	import { Order, type NewOrder, type OrderStatusChange } from "../domain/ORD/Order.js";
 	import { OrderLine } from "../domain/ORD/OrderLine.js";
 	import { OrderStatus } from "../domain/ORD/OrderStatus.js";
@@ -29,6 +30,11 @@
 	export interface OrderCatalog {
 		findRestaurant(restaurantId: string): Promise<Restaurant | null>;
 		findMenuItem(itemId: string): Promise<MenuItem | null>;
+		findCustomerProfile(customerId: string): Promise<{
+			deliveryAddress: string;
+			city: string;
+			country: string;
+		} | null>;
 	}
 
 	export type NewOrderDetails = Pick<NewOrder, "customerId" | "restaurantId" | "lines">;
@@ -94,6 +100,14 @@
 
 		async placeOrder(request: PlaceOrderRequest): Promise<Order> {
 			const customer = await this.requireCustomer();
+			const customerProfile = await this.dependencies.catalog.findCustomerProfile(customer.id);
+			if (
+				!hasDeliveryAddress(customerProfile?.deliveryAddress)
+				|| !hasDeliveryCity(customerProfile?.city)
+				|| !hasDeliveryCountry(customerProfile?.country)
+			) {
+				throw new OrderServiceError("CONFLICT", "Complete and save your delivery address, city, and country before ordering.");
+			}
 			if (!request.restaurantId.trim() || request.lines.length === 0) {
 				throw new OrderServiceError("VALIDATION", "Choose a restaurant and at least one item.");
 			}
