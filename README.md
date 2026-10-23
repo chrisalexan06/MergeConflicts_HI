@@ -18,9 +18,48 @@ The repository is structured to enforce a strict multi-layer separation between 
   * `src/infrastructure/`: Technical services, database connection pool, and repository adapters
   * `src/routes/`: HTTP controllers and session verification gate
   * `config/`: Initial city and seed configuration datasets
-    
+
+
 ## 3. Installation & Dependency Setup
-Clone the repository and install dependencies for both the backend server and frontend client.
-### A. Clone and Checkout Submission Tag
+
+After cloning the repository and checking out the `phase2` tag, dependencies must be installed separately in both the backend (`server`) and frontend (`client`) directories. Running `npm install` will generate the required `node_modules` folders.
+
+### A. Install Backend Dependencies
+
 ```bash
-git checkout
+cd my-app/server
+npm install
+```
+
+### B. Install Frontend Dependencies
+
+```bash
+cd ../client
+npm install
+```
+
+### C. Environment Configuration
+
+Create a `.env` file inside `my-app/server/`.
+
+**Important:** Ensure that `.env` and `node_modules/` are included in `.gitignore` to prevent sensitive information and unnecessary dependencies from being committed to Git.
+
+### D. Launch Backend Server
+
+From the repository root:
+
+```bash
+cd my-app/server
+npm run dev
+```
+
+### E. Launch Frontend Dashboard
+
+Open a second terminal and run the following commands from the repository root:
+
+```bash
+cd my-app/client
+npm run dev
+```
+
+Once both servers are running, open the local URL displayed by Vite in the frontend terminal to access the Sugar Dash application.
