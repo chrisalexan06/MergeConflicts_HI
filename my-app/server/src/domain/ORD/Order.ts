@@ -10,6 +10,17 @@ export interface NewOrder {
   updatedAt?: Date;
 }
 
+export interface OrderStatusChange {
+  orderId: string;
+  previousStatus: OrderStatus;
+  status: OrderStatus;
+  occurredAt: Date;
+}
+
+export interface OrderObserver {
+  onStatusChanged(change: OrderStatusChange): void;
+}
+
 export class Order {
   readonly id: string;
   readonly customerId: string;
@@ -18,6 +29,8 @@ export class Order {
   readonly createdAt: Date;
   private currentStatus: OrderStatus;
   private lastUpdatedAt: Date;
+  private readonly statusChanges: OrderStatusChange[] = [];
+  private readonly observers = new Set<OrderObserver>();
 
   constructor(order: NewOrder, status = OrderStatus.PLACED) {
     if (!order.id.trim() || !order.customerId.trim() || !order.restaurantId.trim()) {
@@ -48,6 +61,18 @@ export class Order {
     return this.lines.reduce((sum, line) => sum + line.subtotal, 0);
   }
 
+  get transitionEvents(): ReadonlyArray<OrderStatusChange> {
+    return this.statusChanges.map((change) => ({
+      ...change,
+      occurredAt: new Date(change.occurredAt),
+    }));
+  }
+
+  subscribe(observer: OrderObserver): () => void {
+    this.observers.add(observer);
+    return () => this.observers.delete(observer);
+  }
+
   cancel(): void {
     this.transition(OrderStatus.PLACED, OrderStatus.CANCELLED);
   }
@@ -76,7 +101,23 @@ export class Order {
     if (!allowedStatuses.includes(this.currentStatus)) {
       throw new Error(`Cannot change order status from ${this.currentStatus} to ${next}.`);
     }
+    const previousStatus = this.currentStatus;
+    const occurredAt = new Date();
     this.currentStatus = next;
-    this.lastUpdatedAt = new Date();
+    this.lastUpdatedAt = occurredAt;
+
+    const change: OrderStatusChange = Object.freeze({
+      orderId: this.id,
+      previousStatus,
+      status: next,
+      occurredAt,
+    });
+    this.statusChanges.push(change);
+    for (const observer of this.observers) {
+      observer.onStatusChanged({
+        ...change,
+        occurredAt: new Date(change.occurredAt),
+      });
+    }
   }
 }

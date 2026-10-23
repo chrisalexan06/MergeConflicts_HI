@@ -163,22 +163,34 @@ describe("PostgresOrderStore", () => {
 			createdAt: new Date("2026-10-15T12:00:00Z"),
 		});
 		order.cancel();
-		let queryText = "";
-		let queryValues: unknown[] = [];
+		const calls: QueryCall[] = [];
+		let released = false;
 		const store = new PostgresOrderStore(asPool({
-			connect: async () => { throw new Error("Unexpected connection"); },
-			query: async (sql: string, values: unknown[]) => {
-				queryText = sql;
-				queryValues = values;
-				return { rows: [], rowCount: 1 };
-			},
+			connect: async () => ({
+				query: async (sql: string, values?: unknown[]) => {
+					calls.push({ sql, values });
+					return { rows: [], rowCount: 1 };
+				},
+				release: () => { released = true; },
+			}),
+			query: async () => ({ rows: [], rowCount: 0 }),
 		}));
 
 		assert.equal(await store.updateStatus(order, OrderStatus.PLACED), true);
-		assert.match(queryText, /"orderStatus" = \$4/);
-		assert.deepEqual(queryValues, ["81", "cancelled", order.updatedAt, "placed"]);
-		assert.match(queryText, /earlier\."orderStatus" = 'accepted'/);
-		assert.match(queryText, /earlier\.created_at, earlier\.order_id/);
+		assert.deepEqual(calls.map((call) => call.sql.trim().split(/\s+/)[0]), [
+			"BEGIN",
+			"UPDATE",
+			"INSERT",
+			"COMMIT",
+		]);
+		assert.match(calls[1].sql, /"orderStatus" = \$4/);
+		assert.deepEqual(calls[1].values, ["81", "cancelled", order.updatedAt, "placed"]);
+		assert.match(calls[1].sql, /earlier\."orderStatus" = 'accepted'/);
+		assert.match(calls[1].sql, /earlier\.created_at, earlier\.order_id/);
+		assert.match(calls[2].sql, /INSERT INTO public\.order_events/);
+		assert.match(calls[2].sql, /event_type, from_status, to_status, event_timestamp/);
+		assert.deepEqual(calls[2].values, ["81", "status_transition", "placed", "cancelled", order.updatedAt]);
+		assert.equal(released, true);
 	});
 
 	it("reports a lost status race when no row matches the expected state", async () => {
@@ -190,11 +202,47 @@ describe("PostgresOrderStore", () => {
 			createdAt: new Date(),
 		});
 		order.cancel();
+		const calls: string[] = [];
 		const store = new PostgresOrderStore(asPool({
-			connect: async () => { throw new Error("Unexpected connection"); },
+			connect: async () => ({
+				query: async (sql: string) => {
+					calls.push(sql.trim().split(/\s+/)[0]);
+					return { rows: [], rowCount: sql.startsWith("UPDATE") ? 0 : 1 };
+				},
+				release: () => {},
+			}),
 			query: async () => ({ rows: [], rowCount: 0 }),
 		}));
 
 		assert.equal(await store.updateStatus(order, OrderStatus.PLACED), false);
+		assert.deepEqual(calls, ["BEGIN", "UPDATE", "ROLLBACK"]);
+	});
+
+	it("rolls back the status update when transition-event persistence fails", async () => {
+		const order = new (await import("../../domain/ORD/Order.js")).Order({
+			id: "81",
+			customerId: "12",
+			restaurantId: "7",
+			lines: [new OrderLine("3", "Cake", 4.5, 1)],
+			createdAt: new Date("2026-10-15T12:00:00Z"),
+		});
+		order.cancel();
+		const calls: string[] = [];
+		const store = new PostgresOrderStore(asPool({
+			connect: async () => ({
+				query: async (sql: string) => {
+					calls.push(sql.trim().split(/\s+/)[0]);
+					if (sql.includes("INSERT INTO public.order_events")) {
+						throw new Error("event insert failed");
+					}
+					return { rows: [], rowCount: 1 };
+				},
+				release: () => {},
+			}),
+			query: async () => ({ rows: [], rowCount: 0 }),
+		}));
+
+		await assert.rejects(() => store.updateStatus(order, OrderStatus.PLACED), /event insert failed/);
+		assert.deepEqual(calls, ["BEGIN", "UPDATE", "INSERT", "ROLLBACK"]);
 	});
 });

@@ -1,5 +1,5 @@
 	import { Role } from "../domain/REG/Role.js";
-	import { Order, type NewOrder } from "../domain/ORD/Order.js";
+	import { Order, type NewOrder, type OrderStatusChange } from "../domain/ORD/Order.js";
 	import { OrderLine } from "../domain/ORD/OrderLine.js";
 	import { OrderStatus } from "../domain/ORD/OrderStatus.js";
 
@@ -35,10 +35,27 @@
 
 	export interface OrderRepository {
 		create(order: NewOrderDetails): Promise<Order>;
-		updateStatus(order: Order, expectedStatus: OrderStatus): Promise<boolean>;
+		updateStatus(
+			order: Order,
+			expectedStatus: OrderStatus,
+			transitionEvents?: ReadonlyArray<OrderStatusChange>,
+		): Promise<boolean>;
 		findById(orderId: string): Promise<Order | null>;
 		findByCustomerId(customerId: string): Promise<Order[]>;
 		findByRestaurantId(restaurantId: string): Promise<Order[]>;
+	}
+
+	function captureTransitionEvents(order: Order, transition: () => void): OrderStatusChange[] {
+		const events: OrderStatusChange[] = [];
+		const unsubscribe = order.subscribe({
+			onStatusChanged: (event) => events.push(event),
+		});
+		try {
+			transition();
+		} finally {
+			unsubscribe();
+		}
+		return events;
 	}
 
 	export interface PlaceOrderRequest {
@@ -121,8 +138,8 @@
 				throw new OrderServiceError("CONFLICT", "Only placed orders can be cancelled.");
 			}
 
-			order.cancel();
-			const updated = await this.dependencies.orders.updateStatus(order, expectedStatus);
+			const transitionEvents = captureTransitionEvents(order, () => order.cancel());
+			const updated = await this.dependencies.orders.updateStatus(order, expectedStatus, transitionEvents);
 			if (!updated) {
 				throw new OrderServiceError("CONFLICT", "Order status changed before it could be cancelled.");
 			}
@@ -230,11 +247,11 @@
 			}
 
 			const previousStatus = order.status;
-			transition(order);
-			const updated = await this.dependencies.orders.updateStatus(order, previousStatus);
+			const transitionEvents = captureTransitionEvents(order, () => transition(order));
+			const updated = await this.dependencies.orders.updateStatus(order, previousStatus, transitionEvents);
 			if (!updated) {
 				throw new OrderServiceError("CONFLICT", "Order status changed before it could be updated.");
-			}
+			} // issue rn cause the order states arent in order (?) placed -> cannot go to accepted?
 			return order;
 		}
 
