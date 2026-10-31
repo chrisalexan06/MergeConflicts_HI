@@ -35,6 +35,10 @@ function databaseStatusToDomain(status: string): OrderStatus {
 			return OrderStatus.PREPARING;
 		case "ready":
 			return OrderStatus.READY;
+		case "picked_up":
+			return OrderStatus.PICKED_UP;
+		case "delivered":
+			return OrderStatus.DELIVERED;
 		case "cancelled":
 			return OrderStatus.CANCELLED;
 		case "completed":

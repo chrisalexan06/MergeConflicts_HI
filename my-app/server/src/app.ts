@@ -4,6 +4,7 @@ import orderRoutes from './routes/orders.js';
 import restaurantRoutes from './routes/restaurantRoutes.js';
 import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
 import { InitialCitySeeder } from './seed/InitialCitySeeder.js';
+import courierRoutes from './routes/couriers.js';
 
 
 
@@ -31,6 +32,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/couriers', courierRoutes);
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/test/restaurants', restaurantRoutes);
 

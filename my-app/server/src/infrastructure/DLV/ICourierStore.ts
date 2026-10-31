@@ -15,4 +15,8 @@ export interface ICourierStore {
    * Persists changes to a courier's state (status, assigned order ID).
    */
   save(courier: Courier): Promise<void>;
+  assignOrder(
+  courierId: string,
+  orderId: string
+): Promise<Courier>;
 }
