@@ -1,5 +1,16 @@
 import { Courier } from '../../domain/DLV/Courier.js';
 
+export interface CourierLocation {
+  id: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface ICourierStore {
   /**
    * Finds all couriers who are on duty and not currently delivering an order.
@@ -19,4 +30,16 @@ export interface ICourierStore {
   courierId: string,
   orderId: string
 ): Promise<Courier>;
+
+findAvailableCouriers(): Promise<CourierLocation[]>;
+
+findRestaurantPosition(
+  restaurantId: string
+): Promise<Coordinates>;
+
+reassignOrder(
+  orderId: string,
+  newCourierId: string
+): Promise<void>;
+
 }

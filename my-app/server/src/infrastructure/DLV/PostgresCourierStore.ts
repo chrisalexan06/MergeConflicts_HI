@@ -2,6 +2,14 @@ import type { Pool, PoolClient } from 'pg';
 import { Courier } from '../../domain/DLV/Courier.js';
 import { CourierStatus } from '../../domain/DLV/CourierStatus.js';
 import type { ICourierStore } from './ICourierStore.js';
+import type {
+  CourierLocation,
+  Coordinates
+} from './ICourierStore.js';
+
+import {
+  parseCoordinates
+} from '../../application/DLV/Coordinates.js';
 
 interface CourierRow {
   accountID: string;
@@ -64,6 +72,52 @@ export class PostgresCourierStore implements ICourierStore {
 
     return result.rows.map(mapCourier);
   }
+
+  
+async findAvailableCouriers(): Promise<CourierLocation[]> {
+  const result = await this.db.query<{
+    accountID: string;
+    courierPosition: string;
+  }>(
+    `SELECT
+       c."accountID",
+       c."courierPosition"
+     FROM public."Courier" c
+     WHERE c."courierStatus" = 'idle'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM public.courier_assignments ca
+         WHERE ca.courier_id = c."accountID"
+           AND ca.unassigned_at IS NULL
+       )`
+  );
+
+  return result.rows.map(row => ({
+    id: String(row.accountID),
+    ...parseCoordinates(row.courierPosition)
+  }));
+}
+
+async findRestaurantPosition(
+  restaurantId: string
+): Promise<Coordinates> {
+  const result = await this.db.query<{
+    restaurantPosition: string;
+  }>(
+    `SELECT "restaurantPosition"
+     FROM public."Restaurant"
+     WHERE "restaurantID" = $1`,
+    [restaurantId]
+  );
+
+  if (!result.rows[0]) {
+    throw new Error('Restaurant not found.');
+  }
+
+  return parseCoordinates(
+    result.rows[0].restaurantPosition
+  );
+}
 
   // Compatibility with the existing ICourierStore.
   async save(courier: Courier): Promise<void> {
@@ -188,9 +242,7 @@ export class PostgresCourierStore implements ICourierStore {
     orderId: string
   ): Promise<Courier> {
     return this.transaction(async (client) => {
-      const courier = await this.lockCourier(
-        client, courierId
-      );
+      
 
       const order = await client.query<{
         orderStatus: string;
@@ -207,6 +259,10 @@ export class PostgresCourierStore implements ICourierStore {
           'Order must be ready before pickup.'
         );
       }
+
+      const courier = await this.lockCourier(
+        client, courierId
+      );
 
       const assignment = await client.query(
         `SELECT assignment_id
@@ -293,9 +349,7 @@ export class PostgresCourierStore implements ICourierStore {
     orderId: string
   ): Promise<Courier> {
     return this.transaction(async (client) => {
-      const courier = await this.lockCourier(
-        client, courierId
-      );
+      
 
       const order = await client.query<{
         orderStatus: string;
@@ -312,6 +366,10 @@ export class PostgresCourierStore implements ICourierStore {
           'Order must be picked up before delivery.'
         );
       }
+
+      const courier = await this.lockCourier(
+        client, courierId
+      );
 
       const assignment = await client.query(
         `SELECT assignment_id
@@ -389,8 +447,7 @@ export class PostgresCourierStore implements ICourierStore {
   orderId: string
 ): Promise<Courier> {
   return this.transaction(async (client) => {
-    const courier = await this.lockCourier(client, courierId);
-
+    
     const orderResult = await client.query<{
       orderStatus: string;
     }>(
@@ -404,6 +461,9 @@ export class PostgresCourierStore implements ICourierStore {
     if (orderResult.rows[0]?.orderStatus !== 'ready') {
       throw new Error('Only ready orders can be assigned.');
     }
+
+    const courier = await this.lockCourier(client, courierId);
+
 
     courier.acceptOrder(orderId);
 
@@ -440,6 +500,184 @@ export class PostgresCourierStore implements ICourierStore {
     }
 
     return courier;
+  });
+}
+
+
+
+
+async reassignOrder(
+  orderId: string,
+  newCourierId: string
+): Promise<void> {
+  await this.transaction(async (client) => {
+
+    // 1. Lock the order first
+    const order = await client.query<{
+      orderStatus: string;
+    }>(
+      `SELECT "orderStatus"
+       FROM public.orders
+       WHERE order_id = $1
+       FOR UPDATE`,
+      [orderId]
+    );
+
+    if (order.rows[0]?.orderStatus !== 'ready') {
+      throw new Error(
+        'Only orders awaiting pickup can be reassigned.'
+      );
+    }
+
+    // 2. Find the current active assignment
+    const existing = await client.query<{
+      courier_id: string;
+    }>(
+      `SELECT courier_id
+       FROM public.courier_assignments
+       WHERE order_id = $1
+         AND unassigned_at IS NULL`,
+      [orderId]
+    );
+
+    if (existing.rows.length !== 1) {
+      throw new Error(
+        'Order must have exactly one active assignment.'
+      );
+    }
+
+    const oldCourierId = String(
+      existing.rows[0].courier_id
+    );
+
+    if (oldCourierId === newCourierId) {
+      throw new Error(
+        'Replacement courier is already assigned.'
+      );
+    }
+
+    // 3. Lock both couriers in numeric ID order
+    const couriers = await client.query<{
+      accountID: string;
+      courierStatus: string;
+    }>(
+      `SELECT "accountID", "courierStatus"
+       FROM public."Courier"
+       WHERE "accountID" IN ($1, $2)
+       ORDER BY "accountID"
+       FOR UPDATE`,
+      [oldCourierId, newCourierId]
+    );
+
+    const oldCourier = couriers.rows.find(
+      c => String(c.accountID) === oldCourierId
+    );
+
+    const newCourier = couriers.rows.find(
+      c => String(c.accountID) === newCourierId
+    );
+
+    if (oldCourier?.courierStatus !== 'assigned') {
+      throw new Error(
+        'Current courier is not awaiting pickup.'
+      );
+    }
+
+    if (newCourier?.courierStatus !== 'idle') {
+      throw new Error(
+        'Replacement courier is not idle.'
+      );
+    }
+
+    // 4. Verify replacement courier has no active order
+    const busy = await client.query(
+      `SELECT 1
+       FROM public.courier_assignments
+       WHERE courier_id = $1
+         AND unassigned_at IS NULL`,
+      [newCourierId]
+    );
+
+    if (busy.rowCount !== 0) {
+      throw new Error(
+        'Replacement courier already has an order.'
+      );
+    }
+
+    // 5. Close the previous assignment
+    const closed = await client.query(
+      `UPDATE public.courier_assignments
+       SET unassigned_at = now()
+       WHERE order_id = $1
+         AND courier_id = $2
+         AND unassigned_at IS NULL`,
+      [orderId, oldCourierId]
+    );
+
+    if (closed.rowCount !== 1) {
+      throw new Error(
+        'Unable to close previous assignment.'
+      );
+    }
+
+    // 6. Create the new assignment
+    await client.query(
+      `INSERT INTO public.courier_assignments
+         (order_id, courier_id)
+       VALUES ($1, $2)`,
+      [orderId, newCourierId]
+    );
+
+    // 7. Update ready order details
+    const details = await client.query(
+      `UPDATE public.ready_order_details
+       SET "assignedCourier" = $2
+       WHERE order_id = $1
+         AND "assignedCourier" = $3
+         AND pickup_time IS NULL`,
+      [orderId, newCourierId, oldCourierId]
+    );
+
+    if (details.rowCount !== 1) {
+      throw new Error(
+        'Unable to update delivery details.'
+      );
+    }
+
+    // 8. Release the old courier
+    const oldUpdated = await client.query(
+      `UPDATE public."Courier"
+       SET "courierStatus" = 'idle'
+       WHERE "accountID" = $1
+         AND "courierStatus" = 'assigned'`,
+      [oldCourierId]
+    );
+
+    // 9. Assign the replacement courier
+    const newUpdated = await client.query(
+      `UPDATE public."Courier"
+       SET "courierStatus" = 'assigned'
+       WHERE "accountID" = $1
+         AND "courierStatus" = 'idle'`,
+      [newCourierId]
+    );
+
+    if (
+      oldUpdated.rowCount !== 1 ||
+      newUpdated.rowCount !== 1
+    ) {
+      throw new Error(
+        'Unable to update courier states.'
+      );
+    }
+
+    // 10. Record reassignment event
+    await client.query(
+      `INSERT INTO public.order_events
+         (order_id, event_type)
+       VALUES ($1, 'courier_reassigned')`,
+      [orderId]
+    );
   });
 }
 }
