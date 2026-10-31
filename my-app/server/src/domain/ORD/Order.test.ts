@@ -117,4 +117,36 @@ describe('Order domain', () => {
     readyOrder.markReady();
     assert.throws(() => readyOrder.cancelByRestaurant(), /Cannot change order status/);
   });
+
+  // =========================================================================
+  // R-DLV-01: DLV shall assign an order only after restaurant marks it ready
+  // =========================================================================
+  it('R-DLV-01: prevents assigning a courier when order is PLACED', () => {
+    const order = createOrder();
+    assert.equal(order.status, OrderStatus.PLACED);
+    assert.equal(order.canBeAssigned(), false);
+    assert.throws(() => order.assignCourier('courier-1'), /R-DLV-01 Violation/);
+    assert.equal(order.courierId, null);
+  });
+
+  it('R-DLV-01: prevents assigning a courier when order is PREPARING', () => {
+    const order = createOrder();
+    order.accept();
+    order.startPreparing();
+    assert.equal(order.status, OrderStatus.PREPARING);
+    assert.equal(order.canBeAssigned(), false);
+    assert.throws(() => order.assignCourier('courier-1'), /R-DLV-01 Violation/);
+    assert.equal(order.courierId, null);
+  });
+
+  it('R-DLV-01: successfully assigns a courier when order is READY', () => {
+    const order = createOrder();
+    order.accept();
+    order.startPreparing();
+    order.markReady();
+    assert.equal(order.status, OrderStatus.READY);
+    assert.equal(order.canBeAssigned(), true);
+    assert.doesNotThrow(() => order.assignCourier('courier-1'));
+    assert.equal(order.courierId, 'courier-1');
+  });
 });

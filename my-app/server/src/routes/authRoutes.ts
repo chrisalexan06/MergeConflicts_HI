@@ -11,7 +11,7 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-// POST /api/auth/register
+// POST/api/auth/register
 router.post('/register', async (req: Request, res: Response) => {
   try {
     const { accountName, password, email, role, extraData } = req.body;
