@@ -25,12 +25,12 @@ export class DeliveryAssignmentService {
 
     const selectedCourier = idleCouriers[0];
 
-    // Bind order to courier
-    order.assignCourier(selectedCourier.id);
+    await this.courierStore.assignOrder(
+    selectedCourier.id,
+    order.id
+);
 
-    // Update courier state to ASSIGNED using DLV enum
-    selectedCourier.acceptOrder(order.id);
-    await this.courierStore.save(selectedCourier);
+    order.assignCourier(selectedCourier.id);
 
     return true;
   }
