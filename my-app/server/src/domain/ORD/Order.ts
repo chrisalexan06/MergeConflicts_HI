@@ -31,6 +31,7 @@ export class Order {
   private lastUpdatedAt: Date;
   private readonly statusChanges: OrderStatusChange[] = [];
   private readonly observers = new Set<OrderObserver>();
+  public courierId?: string | null;
 
   constructor(order: NewOrder, status = OrderStatus.PLACED) {
     if (!order.id.trim() || !order.customerId.trim() || !order.restaurantId.trim()) {
@@ -47,6 +48,7 @@ export class Order {
     this.createdAt = order.createdAt;
     this.lastUpdatedAt = order.updatedAt ?? order.createdAt;
     this.currentStatus = status;
+    this.courierId = null;
   }
 
   get status(): OrderStatus {
@@ -94,6 +96,20 @@ export class Order {
 
   markReady(): void {
     this.transition(OrderStatus.PREPARING, OrderStatus.READY);
+  }
+  
+  public canBeAssigned(): boolean {
+    return this.status === OrderStatus.READY || (this.status as string) === 'ready';
+  }
+  public assignCourier(courierId: string): void {
+    if (!this.canBeAssigned()) {
+      throw new Error(
+        `[R-DLV-01 Violation] Impossible d'assigner la commande #${this.id}. ` +
+        `Son statut est '${this.status}', mais doit être 'ready'.`
+      );
+    }
+
+    this.courierId = courierId;
   }
 
   private transition(expected: OrderStatus | OrderStatus[], next: OrderStatus): void {
