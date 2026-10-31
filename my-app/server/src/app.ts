@@ -5,7 +5,7 @@ import restaurantRoutes from './routes/restaurantRoutes.js';
 import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
 import { InitialCitySeeder } from './seed/InitialCitySeeder.js';
 import courierRoutes from './routes/couriers.js';
-
+import operatorDeliveryRoutes from './routes/operatorDeliveryRoutes.js';
 
 
 const app = express();
@@ -35,6 +35,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/couriers', courierRoutes);
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/test/restaurants', restaurantRoutes);
+app.use('/api/operator/delivery', operatorDeliveryRoutes);
 
 InitialCitySeeder.seed()
   .then(() => SeedAccountLoader.load())

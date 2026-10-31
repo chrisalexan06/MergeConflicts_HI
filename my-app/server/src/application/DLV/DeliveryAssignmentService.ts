@@ -2,6 +2,9 @@ import { Order } from '../../domain/ORD/Order.js';
 import { OrderStatus } from '../../domain/ORD/OrderStatus.js'; 
 import { CourierStatus } from '../../domain/DLV/CourierStatus.js'; 
 import { ICourierStore } from '../../infrastructure/DLV/ICourierStore.js';
+import {
+  selectNearestCourier
+} from './CourierSelection.js';
 
 export class DeliveryAssignmentService {
   constructor(private courierStore: ICourierStore) {}
@@ -17,21 +20,32 @@ export class DeliveryAssignmentService {
       return false;
     }
 
-    // Find couriers currently IDLE
-    const idleCouriers = await this.courierStore.findIdleCouriers();
-    if (!idleCouriers || idleCouriers.length === 0) {
-      return false; // Order waits in dispatch queue 
-    }
+    
+const restaurant =
+  await this.courierStore.findRestaurantPosition(
+    order.restaurantId
+  );
 
-    const selectedCourier = idleCouriers[0];
+const availableCouriers =
+  await this.courierStore.findAvailableCouriers();
 
-    await this.courierStore.assignOrder(
-    selectedCourier.id,
-    order.id
+const selectedCourier = selectNearestCourier(
+  restaurant,
+  availableCouriers
 );
 
-    order.assignCourier(selectedCourier.id);
+if (!selectedCourier) {
+  return false;
+}
 
-    return true;
+await this.courierStore.assignOrder(
+  selectedCourier.id,
+  order.id
+);
+
+order.assignCourier(selectedCourier.id);
+
+return true;
+
   }
 }
