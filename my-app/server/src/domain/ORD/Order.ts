@@ -112,6 +112,33 @@ export class Order {
     this.courierId = courierId;
   }
 
+  
+public confirmPickup(courierId: string): void {
+  if (this.courierId !== courierId) {
+    throw new Error(
+      'Only the assigned courier can confirm pickup.'
+    );
+  }
+
+  this.transition(
+    OrderStatus.READY,
+    OrderStatus.PICKED_UP
+  );
+}
+
+public confirmDelivery(courierId: string): void {
+  if (this.courierId !== courierId) {
+    throw new Error(
+      'Only the assigned courier can confirm delivery.'
+    );
+  }
+
+  this.transition(
+    OrderStatus.PICKED_UP,
+    OrderStatus.DELIVERED
+  );
+}
+
   private transition(expected: OrderStatus | OrderStatus[], next: OrderStatus): void {
     const allowedStatuses = Array.isArray(expected) ? expected : [expected];
     if (!allowedStatuses.includes(this.currentStatus)) {
