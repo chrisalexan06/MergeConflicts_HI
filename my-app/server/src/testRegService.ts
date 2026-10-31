@@ -9,6 +9,7 @@ async function runTests() {
 
   console.log('--- STARTING REGISTRATION SERVICE TESTS ---');
 
+  
   try {
     // 1. Test Field Validation (Missing username)
     console.log('\nTest 1: Testing missing username validation...');

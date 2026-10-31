@@ -7,11 +7,11 @@ export class DeliveryAssignmentService {
   constructor(private courierStore: ICourierStore) {}
 
   /**
-   * R-DLV-01: Dispatches an order only after restaurant marks it ready.
-   * Demo note: Enforces order status is READY before courier binding.
+   * Dispatches an order only after restaurant marks it ready.
+   
    */
   public async assignReadyOrder(order: Order): Promise<boolean> {
-    // R-DLV-01 Guard check using ORD enum
+    //Guard check using ORD enum
     if (order.status !== OrderStatus.READY && (order.status as string) !== 'ready') {
       console.warn(`[R-DLV-01] Dispatch aborted: Order #${order.id} is '${order.status}', not 'ready'.`);
       return false;
@@ -29,8 +29,7 @@ export class DeliveryAssignmentService {
     order.assignCourier(selectedCourier.id);
 
     // Update courier state to ASSIGNED using DLV enum
-    selectedCourier.status = CourierStatus.ASSIGNED;
-    selectedCourier.currentOrderId = order.id;
+    selectedCourier.acceptOrder(order.id);
     await this.courierStore.save(selectedCourier);
 
     return true;
