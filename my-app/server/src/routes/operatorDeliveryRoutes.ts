@@ -54,10 +54,21 @@ router.post('/orders/:orderId/reassign', async (req, res) => {
   }
 
   try {
-    await courierStore.reassignOrder(
-      orderId,
-      newCourierId
-    );
+    if (
+  req.body?.confirmedHandoff !== undefined &&
+  typeof req.body.confirmedHandoff !== 'boolean'
+) {
+  res.status(400).json({
+    error: 'confirmedHandoff must be a boolean.'
+  });
+  return;
+}
+
+await courierStore.reassignOrder(
+  orderId,
+  newCourierId,
+  req.body?.confirmedHandoff === true
+);
 
     res.json({
       message: 'Order reassigned successfully.',

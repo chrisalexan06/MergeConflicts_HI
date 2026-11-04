@@ -506,16 +506,15 @@ async findRestaurantPosition(
 
 
 
+
 async reassignOrder(
   orderId: string,
-  newCourierId: string
+  newCourierId: string,
+  confirmedHandoff = false
 ): Promise<void> {
   await this.transaction(async (client) => {
-
-    // 1. Lock the order first
-    const order = await client.query<{
-      orderStatus: string;
-    }>(
+    // Lock the order before changing its assignment.
+    const order = await client.query<{ orderStatus: string }>(
       `SELECT "orderStatus"
        FROM public.orders
        WHERE order_id = $1
@@ -523,16 +522,22 @@ async reassignOrder(
       [orderId]
     );
 
-    if (order.rows[0]?.orderStatus !== 'ready') {
+    const status = order.rows[0]?.orderStatus;
+
+    if (status !== 'ready' && status !== 'picked_up') {
+      throw new Error('Order is not eligible for reassignment.');
+    }
+
+    const afterPickup = status === 'picked_up';
+
+    if (afterPickup && !confirmedHandoff) {
       throw new Error(
-        'Only orders awaiting pickup can be reassigned.'
+        'Operator must confirm the physical handoff.'
       );
     }
 
-    // 2. Find the current active assignment
-    const existing = await client.query<{
-      courier_id: string;
-    }>(
+    // Find the active assignment.
+    const existing = await client.query<{ courier_id: string }>(
       `SELECT courier_id
        FROM public.courier_assignments
        WHERE order_id = $1
@@ -541,22 +546,16 @@ async reassignOrder(
     );
 
     if (existing.rows.length !== 1) {
-      throw new Error(
-        'Order must have exactly one active assignment.'
-      );
+      throw new Error('Order must have one active assignment.');
     }
 
-    const oldCourierId = String(
-      existing.rows[0].courier_id
-    );
+    const oldCourierId = String(existing.rows[0].courier_id);
 
     if (oldCourierId === newCourierId) {
-      throw new Error(
-        'Replacement courier is already assigned.'
-      );
+      throw new Error('Courier is already assigned.');
     }
 
-    // 3. Lock both couriers in numeric ID order
+    // Lock both couriers in numeric ID order.
     const couriers = await client.query<{
       accountID: string;
       courierStatus: string;
@@ -577,19 +576,18 @@ async reassignOrder(
       c => String(c.accountID) === newCourierId
     );
 
-    if (oldCourier?.courierStatus !== 'assigned') {
-      throw new Error(
-        'Current courier is not awaiting pickup.'
-      );
+    const expectedOldStatus = afterPickup
+      ? 'carrying'
+      : 'assigned';
+
+    if (oldCourier?.courierStatus !== expectedOldStatus) {
+      throw new Error('Current courier state is invalid.');
     }
 
     if (newCourier?.courierStatus !== 'idle') {
-      throw new Error(
-        'Replacement courier is not idle.'
-      );
+      throw new Error('Replacement courier must be idle.');
     }
 
-    // 4. Verify replacement courier has no active order
     const busy = await client.query(
       `SELECT 1
        FROM public.courier_assignments
@@ -599,12 +597,35 @@ async reassignOrder(
     );
 
     if (busy.rowCount !== 0) {
-      throw new Error(
-        'Replacement courier already has an order.'
-      );
+      throw new Error('Replacement courier already has an order.');
     }
 
-    // 5. Close the previous assignment
+    // Validate the existing delivery record.
+    const details = await client.query<{
+      assignedCourier: string | null;
+      pickup_time: Date | null;
+      delivery_time: Date | null;
+    }>(
+      `SELECT "assignedCourier", pickup_time, delivery_time
+       FROM public.ready_order_details
+       WHERE order_id = $1
+       FOR UPDATE`,
+      [orderId]
+    );
+
+    const currentDetails = details.rows[0];
+
+    if (
+      !currentDetails ||
+      String(currentDetails.assignedCourier) !== oldCourierId ||
+      currentDetails.delivery_time !== null ||
+      (afterPickup && currentDetails.pickup_time === null) ||
+      (!afterPickup && currentDetails.pickup_time !== null)
+    ) {
+      throw new Error('Delivery details are inconsistent.');
+    }
+
+    // Close the old assignment, preserving history.
     const closed = await client.query(
       `UPDATE public.courier_assignments
        SET unassigned_at = now()
@@ -615,12 +636,10 @@ async reassignOrder(
     );
 
     if (closed.rowCount !== 1) {
-      throw new Error(
-        'Unable to close previous assignment.'
-      );
+      throw new Error('Could not close old assignment.');
     }
 
-    // 6. Create the new assignment
+    // Create the replacement assignment.
     await client.query(
       `INSERT INTO public.courier_assignments
          (order_id, courier_id)
@@ -628,56 +647,56 @@ async reassignOrder(
       [orderId, newCourierId]
     );
 
-    // 7. Update ready order details
-    const details = await client.query(
+    // Preserve the original pickup timestamp.
+    const detailUpdate = await client.query(
       `UPDATE public.ready_order_details
        SET "assignedCourier" = $2
        WHERE order_id = $1
-         AND "assignedCourier" = $3
-         AND pickup_time IS NULL`,
+         AND "assignedCourier" = $3`,
       [orderId, newCourierId, oldCourierId]
     );
 
-    if (details.rowCount !== 1) {
-      throw new Error(
-        'Unable to update delivery details.'
-      );
+    if (detailUpdate.rowCount !== 1) {
+      throw new Error('Could not update assigned courier.');
     }
 
-    // 8. Release the old courier
+    // Release the previous courier.
     const oldUpdated = await client.query(
       `UPDATE public."Courier"
        SET "courierStatus" = 'idle'
        WHERE "accountID" = $1
-         AND "courierStatus" = 'assigned'`,
-      [oldCourierId]
+         AND "courierStatus" = $2`,
+      [oldCourierId, expectedOldStatus]
     );
 
-    // 9. Assign the replacement courier
+    // After a confirmed handoff, new courier is carrying.
+    const newStatus = afterPickup ? 'carrying' : 'assigned';
+
     const newUpdated = await client.query(
       `UPDATE public."Courier"
-       SET "courierStatus" = 'assigned'
+       SET "courierStatus" = $2
        WHERE "accountID" = $1
          AND "courierStatus" = 'idle'`,
-      [newCourierId]
+      [newCourierId, newStatus]
     );
 
-    if (
-      oldUpdated.rowCount !== 1 ||
-      newUpdated.rowCount !== 1
-    ) {
-      throw new Error(
-        'Unable to update courier states.'
-      );
+    if (oldUpdated.rowCount !== 1 || newUpdated.rowCount !== 1) {
+      throw new Error('Could not update courier statuses.');
     }
 
-    // 10. Record reassignment event
+    // Record the operation.
     await client.query(
       `INSERT INTO public.order_events
          (order_id, event_type)
-       VALUES ($1, 'courier_reassigned')`,
-      [orderId]
+       VALUES ($1, $2)`,
+      [
+        orderId,
+        afterPickup
+          ? 'courier_handoff'
+          : 'courier_reassigned'
+      ]
     );
   });
 }
+
 }
