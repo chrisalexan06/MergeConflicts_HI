@@ -37,6 +37,12 @@ export type InitialCityRestaurant = Pick<
 
 export interface InitialCityConfiguration {
   city: string;
+  pricing: {
+    deliveryFee: number;
+    serviceFeeRate: number;
+    smallOrderThreshold: number;
+    smallOrderSurcharge: number;
+  };
   restaurants: InitialCityRestaurant[];
   couriers: InitialCityCourier[];
   customers: InitialCityCustomer[];
@@ -55,8 +61,21 @@ function isSafeInteger(value: unknown): value is number {
 }
 
 function assertInitialCityConfiguration(value: unknown): asserts value is InitialCityConfiguration {
-  if (!isRecord(value) || typeof value.city !== 'string' || !Array.isArray(value.restaurants)) {
-    throw new Error('Initial city configuration must contain a city and a restaurants array.');
+  if (
+    !isRecord(value)
+    || typeof value.city !== 'string'
+    || !isRecord(value.pricing)
+    || !isFiniteNumber(value.pricing.deliveryFee)
+    || value.pricing.deliveryFee < 0
+    || !isFiniteNumber(value.pricing.serviceFeeRate)
+    || value.pricing.serviceFeeRate < 0
+    || !isFiniteNumber(value.pricing.smallOrderThreshold)
+    || value.pricing.smallOrderThreshold < 0
+    || !isFiniteNumber(value.pricing.smallOrderSurcharge)
+    || value.pricing.smallOrderSurcharge < 0
+    || !Array.isArray(value.restaurants)
+  ) {
+    throw new Error('Initial city configuration must contain valid pricing, a city, and a restaurants array.');
   }
 
   const restaurantIds = new Set<number>();

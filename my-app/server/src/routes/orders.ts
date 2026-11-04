@@ -1,8 +1,16 @@
 import { Router, type Request, type Response } from "express";
+import { loadInitialCityConfiguration } from "../application/ORD/InitialCityConfiguration.js";
 import { AuthenticationService } from "../application/REG/AuthenticationService.js";
 import { RegistrationService } from "../application/REG/RegistrationService.js";
 import { pool } from "../db.js";
 import { Order } from "../domain/ORD/Order.js";
+import { FareCalculator } from "../domain/PRC/FareCalculator.js";
+import {
+  DeliveryFeeRule,
+  ServiceFeeRule,
+  SmallOrderSurchargeRule,
+} from "../domain/PRC/PricingRules.js";
+import type { PricingConfig } from "../domain/PRC/PricingRule.js";
 import { Role } from "../domain/REG/Role.js";
 import { OrderService, OrderServiceError } from "../services/orderService.js";
 import { PostgresOrderStore } from "../infrastructure/order/PostgresOrderStore.js";
@@ -51,7 +59,18 @@ function createOrderService(request: Request): OrderService {
   });
 }
 
-function serializeOrder(order: Order) {
+async function createFareCalculator(): Promise<FareCalculator> {
+  const { pricing } = await loadInitialCityConfiguration();
+  const config: PricingConfig = pricing;
+  return new FareCalculator([
+    new DeliveryFeeRule(config),
+    new ServiceFeeRule(config),
+    new SmallOrderSurchargeRule(config),
+  ]);
+}
+
+function serializeOrder(order: Order, calculator: FareCalculator) {
+  const fare = calculator.calculate(order.lines);
   return {
     orderId: Number(order.id),
     orderStatus: order.status.toLowerCase(),
@@ -59,7 +78,9 @@ function serializeOrder(order: Order) {
     updatedAt: order.updatedAt.toISOString(),
     customerId: Number(order.customerId),
     restaurantId: Number(order.restaurantId),
-    total: order.total,
+    subtotal: fare.subtotal,
+    breakdown: fare.breakdown,
+    total: fare.total,
     items: order.lines.map((line) => ({
       itemId: Number(line.itemId),
       itemName: line.itemName,
@@ -67,6 +88,11 @@ function serializeOrder(order: Order) {
       unitPrice: line.unitPrice,
     })),
   };
+}
+
+async function serializeOrders(orders: Order[]) {
+  const calculator = await createFareCalculator();
+  return orders.map((order) => serializeOrder(order, calculator));
 }
 
 function sendError(response: Response, error: unknown): void {
@@ -107,7 +133,7 @@ router.post("/", async (request, response) => {
         quantity: (line as Record<string, number>).quantity,
       })),
     });
-    response.status(201).json(serializeOrder(order));
+    response.status(201).json(serializeOrder(order, await createFareCalculator()));
   } catch (error) {
     sendError(response, error);
   }
@@ -116,7 +142,7 @@ router.post("/", async (request, response) => {
 router.get("/", async (request, response) => {
   try {
     const orders = await createOrderService(request).getCustomerOrders();
-    response.json(orders.map(serializeOrder));
+    response.json(await serializeOrders(orders));
   } catch (error) {
     sendError(response, error);
   }
@@ -125,7 +151,7 @@ router.get("/", async (request, response) => {
 router.get("/restaurant", async (request, response) => {
   try {
     const orders = await createOrderService(request).getRestaurantOrders();
-    response.json(orders.map(serializeOrder));
+    response.json(await serializeOrders(orders));
   } catch (error) {
     sendError(response, error);
   }
@@ -134,7 +160,7 @@ router.get("/restaurant", async (request, response) => {
 router.post("/restaurant/:orderId/accept", async (request, response) => {
   try {
     const order = await createOrderService(request).acceptOrder(String(request.params.orderId));
-    response.json(serializeOrder(order));
+    response.json(serializeOrder(order, await createFareCalculator()));
   } catch (error) {
     sendError(response, error);
   }
@@ -143,7 +169,7 @@ router.post("/restaurant/:orderId/accept", async (request, response) => {
 router.post("/restaurant/:orderId/preparing", async (request, response) => {
   try {
     const order = await createOrderService(request).startPreparingOrder(String(request.params.orderId));
-    response.json(serializeOrder(order));
+    response.json(serializeOrder(order, await createFareCalculator()));
   } catch (error) {
     sendError(response, error);
   }
@@ -152,7 +178,7 @@ router.post("/restaurant/:orderId/preparing", async (request, response) => {
 router.post("/restaurant/:orderId/ready", async (request, response) => {
   try {
     const order = await createOrderService(request).markOrderReady(String(request.params.orderId));
-    response.json(serializeOrder(order));
+    response.json(serializeOrder(order, await createFareCalculator()));
   } catch (error) {
     sendError(response, error);
   }
@@ -161,7 +187,7 @@ router.post("/restaurant/:orderId/ready", async (request, response) => {
 router.post("/restaurant/:orderId/cancel", async (request, response) => {
   try {
     const order = await createOrderService(request).cancelRestaurantOrder(String(request.params.orderId));
-    response.json(serializeOrder(order));
+    response.json(serializeOrder(order, await createFareCalculator()));
   } catch (error) {
     sendError(response, error);
   }
@@ -170,7 +196,7 @@ router.post("/restaurant/:orderId/cancel", async (request, response) => {
 router.get("/:orderId", async (request, response) => {
   try {
     const order = await createOrderService(request).getOrder(String(request.params.orderId));
-    response.json(serializeOrder(order));
+    response.json(serializeOrder(order, await createFareCalculator()));
   } catch (error) {
     sendError(response, error);
   }
@@ -179,7 +205,7 @@ router.get("/:orderId", async (request, response) => {
 router.post("/:orderId/cancel", async (request, response) => {
   try {
     const order = await createOrderService(request).cancelOrder(String(request.params.orderId));
-    response.json(serializeOrder(order));
+    response.json(serializeOrder(order, await createFareCalculator()));
   } catch (error) {
     sendError(response, error);
   }
