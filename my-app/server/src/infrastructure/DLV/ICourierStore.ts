@@ -39,7 +39,8 @@ findRestaurantPosition(
 
 reassignOrder(
   orderId: string,
-  newCourierId: string
+  newCourierId: string,
+  confirmedHandoff?: boolean
 ): Promise<void>;
 
 }
