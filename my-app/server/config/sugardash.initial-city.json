@@ -1,5 +1,11 @@
 {
   "city": "Montreal",
+  "pricing": {
+    "deliveryFee": 3.99,
+    "serviceFeeRate": 0.10,
+    "smallOrderThreshold": 15.00,
+    "smallOrderSurcharge": 2.00
+  },
   "restaurants": [
     {
       "restaurantId": 1,
