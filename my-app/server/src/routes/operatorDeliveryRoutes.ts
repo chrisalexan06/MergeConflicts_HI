@@ -5,6 +5,7 @@ import { RegistrationService } from '../application/REG/RegistrationService.js';
 import { Role } from '../domain/REG/Role.js';
 import { PostgresCourierStore } from '../infrastructure/DLV/PostgresCourierStore.js';
 import { pool } from '../db.js';
+import { DispatchQueueService } from '../application/DLV/DispatchQueueService.js';
 
 const router = Router();
 
@@ -13,6 +14,7 @@ const auth = new AuthenticationService(
 );
 
 const courierStore = new PostgresCourierStore(pool);
+const dispatchQueue = new DispatchQueueService(pool);
 
 router.post('/orders/:orderId/reassign', async (req, res) => {
   const token = req.headers.authorization
@@ -69,6 +71,18 @@ await courierStore.reassignOrder(
   newCourierId,
   req.body?.confirmedHandoff === true
 );
+
+// The previous courier may now be idle.
+// Retry waiting orders using the dispatch queue.
+try {
+  await dispatchQueue.retryPendingOrders();
+} catch (error) {
+  console.error(
+    'Dispatch retry failed after operator reassignment:',
+    error
+  );
+}
+
 
     res.json({
       message: 'Order reassigned successfully.',

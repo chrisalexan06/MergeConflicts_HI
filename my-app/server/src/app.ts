@@ -6,7 +6,8 @@ import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
 import { InitialCitySeeder } from './seed/InitialCitySeeder.js';
 import courierRoutes from './routes/couriers.js';
 import operatorDeliveryRoutes from './routes/operatorDeliveryRoutes.js';
-
+import { DispatchQueueService } from './application/DLV/DispatchQueueService.js';
+import { pool } from './db.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,10 +38,29 @@ app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/test/restaurants', restaurantRoutes);
 app.use('/api/operator/delivery', operatorDeliveryRoutes);
 
+
 InitialCitySeeder.seed()
   .then(() => SeedAccountLoader.load())
-  .then(() => console.log('Database seeders completed successfully.'))
-  .catch((err) => console.error('Failed to initialize database seed data:', err));
+  .then(async () => {
+    console.log('Database seeders completed successfully.');
+
+    // Recover READY orders without active assignments
+    // and retry the persisted dispatch queue.
+    const dispatchQueue = new DispatchQueueService(pool);
+
+    const result = await dispatchQueue.retryPendingOrders();
+
+    console.log(
+      `Dispatch recovery: ${result.assigned} assigned, ` +
+      `${result.waiting} waiting.`
+    );
+  })
+  .catch((err) => {
+    console.error(
+      'Failed to initialize or recover dispatch queue:',
+      err
+    );
+  });
 
 app.listen(PORT, () => {
   console.log(`Backend server listening on http://localhost:${PORT}`);

@@ -5,6 +5,7 @@ import { Role } from '../domain/REG/Role.js';
 import { CourierService } from '../services/courierService.js';
 import { PostgresCourierStore } from '../infrastructure/DLV/PostgresCourierStore.js';
 import { pool } from '../db.js';
+import { DispatchQueueService } from '../application/DLV/DispatchQueueService.js';
 
 const router = Router();
 
@@ -15,6 +16,7 @@ const auth = new AuthenticationService(
 const courierService = new CourierService(
   new PostgresCourierStore(pool)
 );
+const dispatchQueue = new DispatchQueueService(pool);
 
 router.use((req, res, next) => {
   const token = req.headers.authorization
@@ -73,8 +75,15 @@ router.post('/on-duty', async (_req, res) => {
     const courier = await courierService.goOnDuty(
       res.locals.courierId
     );
+    // Courier became idle: retry pending dispatches.
+    try {
+      await dispatchQueue.retryPendingOrders();
+    } catch (error) {
+      console.error('Dispatch retry failed on duty:', error);
+    }
 
     res.json({ status: courier.status });
+
   } catch (error) {
     sendError(res, error);
   }
@@ -115,10 +124,17 @@ router.post('/orders/:orderId/deliver', async (req, res) => {
       String(req.params.orderId)
     );
 
-    res.json({
-      status: courier.status,
-      currentOrderId: courier.currentOrderId
-    });
+  // Courier finished delivery and is idle again.
+  try {
+    await dispatchQueue.retryPendingOrders();
+  } catch (error) {
+    console.error('Dispatch retry failed after delivery:', error);
+  }
+
+  res.json({
+    status: courier.status,
+    currentOrderId: courier.currentOrderId
+  });
   } catch (error) {
     sendError(res, error);
   }
