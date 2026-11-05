@@ -14,10 +14,12 @@ import type { PricingConfig } from "../domain/PRC/PricingRule.js";
 import { Role } from "../domain/REG/Role.js";
 import { OrderService, OrderServiceError } from "../services/orderService.js";
 import { PostgresOrderStore } from "../infrastructure/order/PostgresOrderStore.js";
+import { DispatchQueueService } from '../application/DLV/DispatchQueueService.js';
 
 const router = Router();
 const authentication = new AuthenticationService(new RegistrationService());
 const store = new PostgresOrderStore(pool);
+const dispatchQueueService = new DispatchQueueService(pool);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -175,14 +177,30 @@ router.post("/restaurant/:orderId/preparing", async (request, response) => {
   }
 });
 
-router.post("/restaurant/:orderId/ready", async (request, response) => {
-  try {
-    const order = await createOrderService(request).markOrderReady(String(request.params.orderId));
-    response.json(serializeOrder(order, await createFareCalculator()));
-  } catch (error) {
-    sendError(response, error);
+router.post(
+  '/restaurant/:orderId/ready',
+  async (request, response) => {
+    try {
+      const order = await createOrderService(request)
+        .markOrderReady(String(request.params.orderId));
+
+      // The order is READY. Attempt dispatch immediately.
+      // If no courier is available, it stays in the queue.
+      try {
+        await dispatchQueueService.retryPendingOrders();
+      } catch (error) {
+        console.error(
+          'Dispatch retry failed after order became ready:',
+          error
+        );
+      }
+
+      response.json(serializeOrder(order, await createFareCalculator()));
+    } catch (error) {
+      sendError(response, error);
+    }
   }
-});
+);
 
 router.post("/restaurant/:orderId/cancel", async (request, response) => {
   try {

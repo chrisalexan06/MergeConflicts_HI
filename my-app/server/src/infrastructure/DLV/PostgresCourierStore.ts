@@ -210,7 +210,22 @@ async findRestaurantPosition(
 
     return mapCourier(result.rows[0]);
   }
+  private async readCourier(
+  client: PoolClient,
+  courierId: string
+): Promise<Courier> {
+  const result = await client.query<CourierRow>(
+    `${this.courierQuery}
+     WHERE c."accountID" = $1`,
+    [courierId]
+  );
 
+  if (!result.rows[0]) {
+    throw new Error('Courier not found.');
+  }
+
+  return mapCourier(result.rows[0]);
+}
   async changeDuty(
     courierId: string,
     onDuty: boolean
@@ -233,7 +248,7 @@ async findRestaurantPosition(
         [courierId, courier.status]
       );
 
-      return courier;
+      return await this.readCourier(client, courierId);
     });
   }
 
@@ -340,7 +355,7 @@ async findRestaurantPosition(
         [orderId]
       );
 
-      return courier;
+      return await this.readCourier(client, courierId);
     });
   }
 
@@ -439,7 +454,7 @@ async findRestaurantPosition(
         [orderId]
       );
 
-      return courier;
+      return await this.readCourier(client, courierId);
     });
   }
   public async assignOrder(
@@ -499,7 +514,7 @@ async findRestaurantPosition(
       throw new Error('Courier is no longer available.');
     }
 
-    return courier;
+    return await this.readCourier(client, courierId);
   });
 }
 
