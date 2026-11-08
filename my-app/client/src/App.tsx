@@ -5,6 +5,7 @@ import { LoginPanel } from './components/REG/LoginPanel';
 import { CurrentUserPanel } from './components/REG/CurrentUserPanel';
 import CustomerOrders from './pages/CustomerOrders';
 import RestaurantDashboard from './pages/RestaurantDashboard';
+import CourierDashboard from './pages/CourierDashboard';
 import OperatorDashboard from './pages/OperatorDashboard';
 
 interface SignedInAccount {
@@ -22,7 +23,12 @@ export function App() {
   const navigate = useNavigate(); // lets us jump to a page from code
 
   // Each role has its own home page
-  const homeFor = (role: string) => role === 'restaurant' ? '/restaurant' : role === 'operator' ? '/operator' : '/customer';
+  const homeFor = (role: string) => {
+    if (role === 'restaurant') return '/restaurant';
+    if (role === 'courier') return '/courier';
+    if (role === 'operator') return '/operator';
+    return '/customer';
+  };
 
   const handleLoginSuccess = (account: SignedInAccount, sessionToken: string) => {
     setCurrentUser(account);
@@ -96,6 +102,7 @@ export function App() {
         <strong className="navbar-brand">Sugar Dash</strong>
         {currentUser.role === 'customer' && <Link to="/customer">Restaurants &amp; Orders</Link>}
         {currentUser.role === 'restaurant' && <Link to="/restaurant">Restaurant Orders</Link>}
+        {currentUser.role === 'courier' && <Link to="/courier">Courier Dashboard</Link>}
         {currentUser.role === 'operator' && <Link to="/operator">City operations</Link>}
         <CurrentUserPanel account={currentUser} token={token} onLogout={handleLogout} />
       </nav>
@@ -107,6 +114,9 @@ export function App() {
           )}
           {currentUser.role === 'restaurant' && (
             <Route path="/restaurant" element={<RestaurantDashboard token={token} />} />
+          )}
+          {currentUser.role === 'courier' && (
+            <Route path="/courier" element={<CourierDashboard token={token} />} />
           )}
           {currentUser.role === 'operator' && (
             <Route path="/operator" element={<OperatorDashboard token={token} />} />
