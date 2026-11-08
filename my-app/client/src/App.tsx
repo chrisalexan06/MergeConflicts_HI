@@ -5,6 +5,7 @@ import { LoginPanel } from './components/REG/LoginPanel';
 import { CurrentUserPanel } from './components/REG/CurrentUserPanel';
 import CustomerOrders from './pages/CustomerOrders';
 import RestaurantDashboard from './pages/RestaurantDashboard';
+import OperatorDashboard from './pages/OperatorDashboard';
 
 interface SignedInAccount {
   accountID: number;
@@ -21,7 +22,7 @@ export function App() {
   const navigate = useNavigate(); // lets us jump to a page from code
 
   // Each role has its own home page
-  const homeFor = (role: string) => (role === 'restaurant' ? '/restaurant' : '/customer');
+  const homeFor = (role: string) => role === 'restaurant' ? '/restaurant' : role === 'operator' ? '/operator' : '/customer';
 
   const handleLoginSuccess = (account: SignedInAccount, sessionToken: string) => {
     setCurrentUser(account);
@@ -95,6 +96,7 @@ export function App() {
         <strong className="navbar-brand">Sugar Dash</strong>
         {currentUser.role === 'customer' && <Link to="/customer">Restaurants &amp; Orders</Link>}
         {currentUser.role === 'restaurant' && <Link to="/restaurant">Restaurant Orders</Link>}
+        {currentUser.role === 'operator' && <Link to="/operator">City operations</Link>}
         <CurrentUserPanel account={currentUser} token={token} onLogout={handleLogout} />
       </nav>
 
@@ -105,6 +107,9 @@ export function App() {
           )}
           {currentUser.role === 'restaurant' && (
             <Route path="/restaurant" element={<RestaurantDashboard token={token} />} />
+          )}
+          {currentUser.role === 'operator' && (
+            <Route path="/operator" element={<OperatorDashboard token={token} />} />
           )}
           {/* Anything else (including "/") goes to this role's home page */}
           <Route path="*" element={<Navigate to={homeFor(currentUser.role)} replace />} />
