@@ -16,10 +16,15 @@ interface CourierRow {
   accountName: string;
   courierStatus: CourierStatus;
   currentOrderId: string | null;
+  currentOrderStatus: string | null;
 }
 
-function mapCourier(row: CourierRow): Courier {
-  return new Courier(
+export interface CourierWithOrderStatus extends Courier {
+  currentOrderStatus: string | null;
+}
+
+function mapCourier(row: CourierRow): CourierWithOrderStatus {
+  const courier = new Courier(
     String(row.accountID),
     row.accountName,
     row.courierStatus,
@@ -27,6 +32,9 @@ function mapCourier(row: CourierRow): Courier {
       ? null
       : String(row.currentOrderId)
   );
+  return Object.assign(courier, {
+    currentOrderStatus: row.currentOrderStatus,
+  });
 }
 
 export class PostgresCourierStore implements ICourierStore {
@@ -37,20 +45,23 @@ export class PostgresCourierStore implements ICourierStore {
       c."accountID",
       a."accountName",
       c."courierStatus",
-      active.order_id AS "currentOrderId"
+      active.order_id AS "currentOrderId",
+      active."currentOrderStatus"
     FROM public."Courier" c
     JOIN public."Account" a
       ON a."accountID" = c."accountID"
     LEFT JOIN LATERAL (
-      SELECT ca.order_id
+      SELECT ca.order_id, o."orderStatus" AS "currentOrderStatus"
       FROM public.courier_assignments ca
+      JOIN public.orders o
+        ON o.order_id = ca.order_id
       WHERE ca.courier_id = c."accountID"
         AND ca.unassigned_at IS NULL
       LIMIT 1
     ) active ON TRUE
   `;
 
-  async findById(id: string): Promise<Courier | null> {
+  async findById(id: string): Promise<CourierWithOrderStatus | null> {
     const result = await this.db.query<CourierRow>(
       `${this.courierQuery}
        WHERE c."accountID" = $1`,

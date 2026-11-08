@@ -1,5 +1,8 @@
 import { Courier } from '../domain/DLV/Courier.js';
-import { PostgresCourierStore } from '../infrastructure/DLV/PostgresCourierStore.js';
+import {
+  PostgresCourierStore,
+  type CourierWithOrderStatus
+} from '../infrastructure/DLV/PostgresCourierStore.js';
 
 
 export class CourierService {
@@ -7,7 +10,7 @@ export class CourierService {
     private readonly store: PostgresCourierStore
   ) {}
 
-  async getCourier(courierId: string): Promise<Courier> {
+  async getCourier(courierId: string): Promise<CourierWithOrderStatus> {
     const courier = await this.store.findById(courierId);
 
     if (!courier) {
