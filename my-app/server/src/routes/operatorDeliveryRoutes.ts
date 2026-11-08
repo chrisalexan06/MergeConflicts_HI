@@ -33,6 +33,26 @@ router.get('/map-data', async (req, res) => {
 
   try {
     const restaurants = await restaurantService.loadRestaurants();
+    const preparationQueueResult = await pool.query<{
+      restaurantID: string | number;
+      queueCount: string | number;
+    }>(`SELECT "restaurantID", COUNT(*)::int AS "queueCount"
+        FROM public.orders
+        WHERE LOWER("orderStatus") = 'accepted'
+        GROUP BY "restaurantID"`);
+    const preparationQueueCounts = new Map(
+      preparationQueueResult.rows.map(row => [String(row.restaurantID), Number(row.queueCount)])
+    );
+    const restaurantsWithQueue = restaurants.map(restaurant => {
+      const preparationQueueCount = preparationQueueCounts.get(String(restaurant.restaurantId)) ?? 0;
+      const preparationQueueLevel = restaurant.status === 'paused' || preparationQueueCount >= 6
+        ? 'long'
+        : preparationQueueCount >= 3
+          ? 'building'
+          : 'short';
+      return { ...restaurant, preparationQueueCount, preparationQueueLevel };
+    });
+
     const result = await pool.query<{
       accountID: string | number;
       accountName: string;
@@ -49,7 +69,7 @@ router.get('/map-data', async (req, res) => {
       status: row.courierStatus,
       ...parseCoordinates(row.courierPosition)
     }));
-    res.json({ restaurants, couriers });
+    res.json({ restaurants: restaurantsWithQueue, couriers });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Could not load dashboard map data.' });
   }

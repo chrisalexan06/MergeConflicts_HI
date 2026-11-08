@@ -8,7 +8,11 @@
 .location-marker-icon { border: 0; background: transparent; }
 .location-marker { position: relative; display: grid; width: 34px; height: 34px; place-items: center; border: 3px solid white; border-radius: 50%; color: white; font-weight: 800; box-shadow: 0 2px 8px #26304466; }
 .restaurant-marker, .legend-restaurant { background: #c8664e; }
-.courier-marker, .legend-courier { background: #347d72; }
+.courier-marker, .legend-courier { background: #7656a8; }
+.restaurant-marker.queue-long, .queue-long { background: #d64545; }
+.restaurant-marker.queue-building, .queue-building { background: #e5a62f; }
+.restaurant-marker.queue-short, .queue-short { background: #28a36a; }
+.queue-key { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
 .location-marker .status-dot { position: absolute; top: -3px; right: -4px; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 4px #26304455; }
 .status-dot { display: inline-block; flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; }
 .status-open, .status-idle { background: #28a36a; }
@@ -16,12 +20,16 @@
 .status-closed, .status-offline { background: #8a93a3; }
 .status-carrying { background: #3985d5; }
 .status-dot:not(.status-open):not(.status-idle):not(.status-paused):not(.status-assigned):not(.status-closed):not(.status-offline):not(.status-carrying) { background: #8a93a3; }
-.map-legend { position: absolute; right: 1rem; bottom: 1rem; z-index: 1000; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .55rem 1rem; max-width: calc(100% - 2rem); padding: .65rem .8rem; border: 1px solid #dce2ec; border-radius: 8px; background: #fffffff2; color: #263044; font-size: .8rem; box-shadow: 0 2px 8px #26304422; }
-.map-legend span { display: flex; align-items: center; gap: .4rem; }
+.map-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; margin-top: .85rem; padding: .9rem 1rem; border: 1px solid #dce2ec; border-radius: 10px; background: #f8fafc; color: #263044; font-size: .8rem; }
+.legend-group { display: grid; align-content: start; gap: .4rem; padding-right: .6rem; }
+.legend-group strong { margin-bottom: .1rem; color: #64708a; font-size: .68rem; letter-spacing: .07em; text-transform: uppercase; }
+.legend-group span { display: flex; align-items: center; gap: .4rem; }
 .map-legend i { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; color: white; font-size: .7rem; font-style: normal; font-weight: 800; }
 .map-legend i.status-dot { display: inline-block; width: 10px; height: 10px; border: 1px solid white; }
+.map-legend i.queue-key { display: inline-block; width: 12px; height: 12px; }
 @media (max-width: 640px) {
   .operator-heading { align-items: start; flex-direction: column; }
   .operator-map-shell { min-height: 460px; }
-  .map-legend { right: .5rem; bottom: .5rem; gap: .4rem .7rem; max-width: calc(100% - 1rem); font-size: .7rem; }
+  .map-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem .5rem; font-size: .72rem; }
+  .legend-group { padding-right: 0; }
 }
