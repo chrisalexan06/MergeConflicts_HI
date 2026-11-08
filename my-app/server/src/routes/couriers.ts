@@ -63,7 +63,8 @@ router.get('/me', async (_req, res) => {
     res.json({
       id: courier.id,
       status: courier.status,
-      currentOrderId: courier.currentOrderId
+      currentOrderId: courier.currentOrderId,
+      currentOrderStatus: courier.currentOrderStatus
     });
   } catch (error) {
     sendError(res, error);
