@@ -6,6 +6,7 @@ import { CurrentUserPanel } from './components/REG/CurrentUserPanel';
 import CustomerOrders from './pages/CustomerOrders';
 import RestaurantDashboard from './pages/RestaurantDashboard';
 import CourierDashboard from './pages/CourierDashboard';
+import OperatorDashboard from './pages/OperatorDashboard';
 
 interface SignedInAccount {
   accountID: number;
@@ -25,6 +26,7 @@ export function App() {
   const homeFor = (role: string) => {
     if (role === 'restaurant') return '/restaurant';
     if (role === 'courier') return '/courier';
+    if (role === 'operator') return '/operator';
     return '/customer';
   };
 
@@ -101,6 +103,7 @@ export function App() {
         {currentUser.role === 'customer' && <Link to="/customer">Restaurants &amp; Orders</Link>}
         {currentUser.role === 'restaurant' && <Link to="/restaurant">Restaurant Orders</Link>}
         {currentUser.role === 'courier' && <Link to="/courier">Courier Dashboard</Link>}
+        {currentUser.role === 'operator' && <Link to="/operator">City operations</Link>}
         <CurrentUserPanel account={currentUser} token={token} onLogout={handleLogout} />
       </nav>
 
@@ -114,6 +117,9 @@ export function App() {
           )}
           {currentUser.role === 'courier' && (
             <Route path="/courier" element={<CourierDashboard token={token} />} />
+          )}
+          {currentUser.role === 'operator' && (
+            <Route path="/operator" element={<OperatorDashboard token={token} />} />
           )}
           {/* Anything else (including "/") goes to this role's home page */}
           <Route path="*" element={<Navigate to={homeFor(currentUser.role)} replace />} />
