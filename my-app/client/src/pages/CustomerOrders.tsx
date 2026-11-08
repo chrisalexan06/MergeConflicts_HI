@@ -132,6 +132,27 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
   const selectedRestaurant = restaurants.find(
     (restaurant) => restaurant.restaurantId === selectedRestaurantId
   );
+  const restaurantCannotAcceptOrders = selectedRestaurant?.status === 'paused'
+    || selectedRestaurant?.status === 'closed';
+  const selectedMenuItems = selectedRestaurant?.menu.items.filter(
+    (item) => selectedItems[item.itemId]
+  ) ?? [];
+  const allSelectedItemsSoldOut = selectedMenuItems.length > 0
+    && selectedMenuItems.every((item) => item.status === 'sold_out');
+  const selectedItemsContainSoldOutAndAvailable = selectedMenuItems.some(
+    (item) => item.status === 'sold_out'
+  ) && selectedMenuItems.some((item) => item.status === 'available');
+  const placeOrderTooltip = selectedRestaurant?.status === 'paused'
+    ? 'This restaurant is paused and is not accepting new orders.'
+    : selectedRestaurant?.status === 'closed'
+      ? 'This restaurant is closed and is not accepting orders.'
+      : allSelectedItemsSoldOut
+        ? 'All selected items are sold out.'
+        : selectedItemsContainSoldOutAndAvailable
+          ? 'Some selected items are sold out. Remove them before placing the order.'
+          : selectedMenuItems.length === 0
+            ? 'Select at least one menu item before placing your order.'
+            : 'Place your order.';
 
   async function handlePlaceOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -412,13 +433,26 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                   )
                 )}
 
-                <button
-                  type="submit"
-                  className="btn form-submit"
-                  disabled={placingOrder || profileLoading || !profileIsSaved || selectedRestaurantId === null}
-                >
-                  {placingOrder ? 'Placing order...' : 'Place order'}
-                </button>
+                <span className="place-order-tooltip-wrapper">
+                  <button
+                    type="submit"
+                    className="btn form-submit"
+                    aria-describedby="place-order-tooltip"
+                    disabled={
+                      placingOrder
+                      || profileLoading
+                      || !profileIsSaved
+                      || selectedRestaurantId === null
+                      || restaurantCannotAcceptOrders
+                      || allSelectedItemsSoldOut
+                    }
+                  >
+                    {placingOrder ? 'Placing order...' : 'Place order'}
+                  </button>
+                  <span id="place-order-tooltip" role="tooltip" className="place-order-tooltip">
+                    {placeOrderTooltip}
+                  </span>
+                </span>
               </form>
             )}
             {orderResult && (
