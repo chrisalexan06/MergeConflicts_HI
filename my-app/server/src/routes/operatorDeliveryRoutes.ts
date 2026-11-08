@@ -6,6 +6,8 @@ import { Role } from '../domain/REG/Role.js';
 import { PostgresCourierStore } from '../infrastructure/DLV/PostgresCourierStore.js';
 import { pool } from '../db.js';
 import { DispatchQueueService } from '../application/DLV/DispatchQueueService.js';
+import { RestaurantService } from '../application/ORD/RestaurantService.js';
+import { parseCoordinates } from '../application/DLV/Coordinates.js';
 
 const router = Router();
 
@@ -15,6 +17,43 @@ const auth = new AuthenticationService(
 
 const courierStore = new PostgresCourierStore(pool);
 const dispatchQueue = new DispatchQueueService(pool);
+const restaurantService = new RestaurantService();
+
+router.get('/map-data', async (req, res) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+  const account = token ? auth.getCurrentUser(token) : null;
+  if (!account) {
+    res.status(401).json({ error: 'Authentication required.' });
+    return;
+  }
+  if (account.role !== Role.OPERATOR) {
+    res.status(403).json({ error: 'Only operators can access this resource.' });
+    return;
+  }
+
+  try {
+    const restaurants = await restaurantService.loadRestaurants();
+    const result = await pool.query<{
+      accountID: string | number;
+      accountName: string;
+      courierStatus: string;
+      courierPosition: string;
+    }>(`SELECT c."accountID", a."accountName", c."courierStatus", c."courierPosition"
+        FROM public."Courier" c
+        JOIN public."Account" a ON a."accountID" = c."accountID"
+        WHERE c."courierStatus" <> 'offline'
+        ORDER BY c."accountID"`);
+    const couriers = result.rows.map(row => ({
+      id: String(row.accountID),
+      name: row.accountName,
+      status: row.courierStatus,
+      ...parseCoordinates(row.courierPosition)
+    }));
+    res.json({ restaurants, couriers });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Could not load dashboard map data.' });
+  }
+});
 
 router.post('/orders/:orderId/reassign', async (req, res) => {
   const token = req.headers.authorization
