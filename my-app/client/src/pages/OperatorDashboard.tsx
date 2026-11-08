@@ -9,6 +9,8 @@ interface RestaurantMarker {
   status: string;
   latitude: number;
   longitude: number;
+  preparationQueueCount: number;
+  preparationQueueLevel: 'long' | 'building' | 'short';
 }
 
 interface CourierMarker {
@@ -71,22 +73,25 @@ export default function OperatorDashboard({ token }: { token: string }) {
     }).addTo(map);
 
     const locations: L.LatLngExpression[] = [];
-    const addMarker = (latitude: number, longitude: number, kind: 'restaurant' | 'courier', name: string, status: string) => {
+    const addMarker = (latitude: number, longitude: number, kind: 'restaurant' | 'courier', name: string, status: string, preparationQueueCount?: number, preparationQueueLevel?: 'long' | 'building' | 'short') => {
       const point: L.LatLngExpression = [latitude, longitude];
       locations.push(point);
       const letter = kind === 'restaurant' ? 'R' : 'C';
       const icon = L.divIcon({
         className: 'location-marker-icon',
-        html: `<span class="location-marker ${kind}-marker"><span class="marker-letter">${letter}</span><i class="status-dot status-${statusClass(status)}"></i></span>`,
+        html: `<span class="location-marker ${kind}-marker${preparationQueueLevel ? ` queue-${preparationQueueLevel}` : ''}"><span class="marker-letter">${letter}</span><i class="status-dot status-${statusClass(status)}"></i></span>`,
         iconSize: [36, 36],
         iconAnchor: [18, 18]
       });
+      const queueDetail = preparationQueueLevel
+        ? `<br>Preparation queue: <strong>${preparationQueueLevel}</strong> (${preparationQueueCount} queued)`
+        : '';
       L.marker(point, { icon })
-        .bindTooltip(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(status)}`, { direction: 'top', offset: [0, -16] })
+        .bindTooltip(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(status)}${queueDetail}`, { direction: 'top', offset: [0, -16] })
         .addTo(map);
     };
 
-    data.restaurants.forEach(restaurant => addMarker(restaurant.latitude, restaurant.longitude, 'restaurant', restaurant.restaurantName, restaurant.status));
+    data.restaurants.forEach(restaurant => addMarker(restaurant.latitude, restaurant.longitude, 'restaurant', restaurant.restaurantName, restaurant.status, restaurant.preparationQueueCount, restaurant.preparationQueueLevel));
     data.couriers.forEach(courier => addMarker(courier.latitude, courier.longitude, 'courier', courier.name, courier.status));
 
     if (locations.length === 1) map.setView(locations[0], 14);
@@ -107,7 +112,12 @@ export default function OperatorDashboard({ token }: { token: string }) {
       </div>
       <div className="operator-map-shell">
         <div ref={mapElement} className="operator-map" role="application" aria-label="Interactive map of restaurants and on-duty couriers" />
-        <div className="map-legend"><span><i className="legend-restaurant">R</i> Restaurant</span><span><i className="legend-courier">C</i> Courier</span><span><i className="status-dot status-open" /> Open / idle</span><span><i className="status-dot status-paused" /> Paused / assigned</span><span><i className="status-dot status-closed" /> Closed</span><span><i className="status-dot status-carrying" /> Carrying</span></div>
+      </div>
+      <div className="map-legend" aria-label="Map legend">
+        <div className="legend-group"><strong>Map markers</strong><span><i className="legend-restaurant">R</i> Restaurant</span><span><i className="legend-courier">C</i> Courier</span></div>
+        <div className="legend-group"><strong>Preparation queue</strong><span><i className="queue-key queue-short" /> Short: 0–2</span><span><i className="queue-key queue-building" /> Building: 3–5</span><span><i className="queue-key queue-long" /> Long: 6+ or paused</span></div>
+        <div className="legend-group"><strong>Restaurant status</strong><span><i className="status-dot status-open" /> Open</span><span><i className="status-dot status-paused" /> Paused</span><span><i className="status-dot status-closed" /> Closed</span></div>
+        <div className="legend-group"><strong>Courier status</strong><span><i className="status-dot status-idle" /> Idle</span><span><i className="status-dot status-assigned" /> Assigned</span><span><i className="status-dot status-carrying" /> Carrying</span></div>
       </div>
     </section>
   );
