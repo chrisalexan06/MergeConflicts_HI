@@ -21,6 +21,9 @@ import {
 import { OrderSummaryService } from './OrderSummary.js';
 import type { OrderSummaryRouteDependencies } from '../../routes/orderSummaryRoutes.js';
 import type { OrderSummary } from './OrderSummary.js';
+import type { OrderSummaryLedgerEntry } from '../../infrastructure/PRC/PostgresOrderSummaryLedger.js';
+import { record } from 'zod/v4/mini';
+
 
 type RouterFactory = typeof import('../../routes/orderSummaryRoutes.js').createOrderSummaryRouter;
 let createOrderSummaryRouter: RouterFactory;
@@ -52,7 +55,13 @@ function createOrder(delivered: boolean): Order {
 async function createDependencies(account: Account, order: Order | null): Promise<OrderSummaryRouteDependencies> {
   const { pricing } = await loadInitialCityConfiguration();
   return {
-    ledger: {record:async () => {}},
+    ledger: {
+      record: async () => {},
+      listByCustomer: async () => [],
+      listByRestaurant: async () => [],
+      listByCourier: async () => [],
+      listAll: async () => [],
+    },
     getCurrentUser: (token) => token === 'valid-token' ? account : null,
     findOrderById: async () => order,
     findCourierId: async () => '3',
@@ -61,7 +70,7 @@ async function createDependencies(account: Account, order: Order | null): Promis
       new DeliveryFeeRule(pricing),
       new ServiceFeeRule(pricing),
       new SmallOrderSurchargeRule(pricing),
-    ])),
+    ]))
   };
 }
 
@@ -76,6 +85,10 @@ async function requestSummary(
     record: async (summary) => {
       recordedSummaries.push(summary);
     },
+    listByCustomer: async () => [],
+    listByRestaurant: async () => [],
+    listByCourier: async () => [],
+    listAll: async () => [],
   };
 
   app.use('/api/order-summaries', createOrderSummaryRouter(dependencies));
@@ -94,6 +107,65 @@ async function requestSummary(
     return await fetch(`http://127.0.0.1:${address.port}/api/order-summaries/1`, {
       headers: { Authorization: 'Bearer valid-token' },
     });
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+}
+
+type HistoryLedgerCall =
+  | { method: 'listByCustomer'; id: string }
+  | { method: 'listByRestaurant'; id: string }
+  | { method: 'listByCourier'; id: string }
+  | { method: 'listAll' };
+
+async function requestHistory(
+  account: Account,
+  calls: HistoryLedgerCall[],
+  authenticated = true,
+): Promise<Response> {
+  const app = express();
+  const dependencies = await createDependencies(account, createOrder(true));
+
+  dependencies.ledger = {
+    record: async () => {},
+    listByCustomer: async (id) => {
+      calls.push({ method: 'listByCustomer', id });
+      return [] as OrderSummaryLedgerEntry[];
+    },
+    listByRestaurant: async (id) => {
+      calls.push({ method: 'listByRestaurant', id });
+      return [] as OrderSummaryLedgerEntry[];
+    },
+    listByCourier: async (id) => {
+      calls.push({ method: 'listByCourier', id });
+      return [] as OrderSummaryLedgerEntry[];
+    },
+    listAll: async () => {
+      calls.push({ method: 'listAll' });
+      return [] as OrderSummaryLedgerEntry[];
+    },
+  };
+
+  app.use('/api/order-summaries', createOrderSummaryRouter(dependencies));
+  const server = createServer(app);
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  try {
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Test server did not bind to a TCP port.');
+    }
+
+    return await fetch(
+      `http://127.0.0.1:${address.port}/api/order-summaries/history`,
+      authenticated ? { headers: { Authorization: 'Bearer valid-token' } } : {},
+    );
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -156,4 +228,49 @@ describe('Order summary route', () => {
       await response.json();
     }
   });
+
+  it('uses only the ledger method scoped to the authenticated role', async () => {
+  const cases: Array<{
+    account: Account;
+    expected: HistoryLedgerCall;
+  }> = [
+    {
+      account: new CustomerAccount(1, 'customer', 'password', 'customer@example.com'),
+      expected: { method: 'listByCustomer', id: '1' },
+    },
+    {
+      account: new RestaurantStaffAccount(2, 'restaurant', 'password', 'restaurant@example.com', 7),
+      expected: { method: 'listByRestaurant', id: '1' },
+    },
+    {
+      account: new CourierAccount(3, 'courier', 'password', 'courier@example.com'),
+      expected: { method: 'listByCourier', id: '3' },
+    },
+    {
+      account: new OperatorAccount(4, 'operator', 'password', 'operator@example.com'),
+      expected: { method: 'listAll' },
+    },
+  ];
+
+  for (const { account, expected } of cases) {
+    const calls: HistoryLedgerCall[] = [];
+    const response = await requestHistory(account, calls);
+
+    assert.equal(response.status, 200, `${account.role} should access history`);
+    await response.json();
+    assert.deepEqual(calls, [expected], `${account.role} should call only its scoped ledger method`);
+  }
+});
+
+it('returns 401 for unauthenticated ledger history requests', async () => {
+  const calls: HistoryLedgerCall[] = [];
+  const response = await requestHistory(
+    new CustomerAccount(1, 'customer', 'password', 'customer@example.com'),
+    calls,
+    false,
+  );
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(calls, []);
+});
 });

@@ -15,7 +15,51 @@ import type { Account } from '../domain/REG/Account.js';
 import { pool } from '../db.js';
 import { PostgresOrderStore } from '../infrastructure/order/PostgresOrderStore.js';
 import { OrderSummaryService, type OrderSummary } from '../domain/PRC/OrderSummary.js';
-import { PostgresOrderSummaryLedger } from '../infrastructure/PRC/PostgresOrderSummaryLedger.js';
+import {
+  PostgresOrderSummaryLedger,
+  type OrderSummaryLedgerEntry,
+} from '../infrastructure/PRC/PostgresOrderSummaryLedger.js';
+
+
+const authentication = new AuthenticationService(new RegistrationService());
+const orderStore = new PostgresOrderStore(pool);
+const { pricing } = await loadInitialCityConfiguration();
+const summaryService = new OrderSummaryService(new FareCalculator([
+  new DeliveryFeeRule(pricing),
+  new ServiceFeeRule(pricing),
+  new SmallOrderSurchargeRule(pricing),
+]));
+const ledger = new PostgresOrderSummaryLedger(pool);
+
+export default createOrderSummaryRouter({
+  getCurrentUser: (token) => authentication.getCurrentUser(token),
+  findOrderById: (orderId) => orderStore.findById(orderId),
+  findCourierId: async (orderId) => {
+    const result = await pool.query<{ assignedCourier: string | number | null }>(
+      `SELECT "assignedCourier"
+       FROM public.ready_order_details
+       WHERE order_id = $1`,
+      [orderId],
+    );
+    const assignedCourier = result.rows[0]?.assignedCourier;
+    return assignedCourier === null || assignedCourier === undefined
+      ? null
+      : String(assignedCourier);
+  },
+  findRestaurantId: async (accountId) => {
+    const result = await pool.query<{ restaurantID: string | number }>(
+      `SELECT "restaurantID"
+       FROM public."RestaurantStaff"
+       WHERE "accountID" = $1
+       LIMIT 1`,
+      [accountId],
+    );
+    const restaurantId = result.rows[0]?.restaurantID;
+    return restaurantId === undefined ? null : String(restaurantId);
+  },
+  summaryService,
+  ledger,
+});
 
 
 export interface OrderSummaryRouteDependencies {
@@ -25,12 +69,59 @@ export interface OrderSummaryRouteDependencies {
   findRestaurantId(accountId: string): Promise<string | null>;
   summaryService: OrderSummaryService;
   ledger: {
-    record(summary: OrderSummary): Promise<void>;
-  };
+  record(summary: OrderSummary): Promise<void>;
+  listByCustomer(customerId: string): Promise<OrderSummaryLedgerEntry[]>;
+  listByRestaurant(restaurantId: string): Promise<OrderSummaryLedgerEntry[]>;
+  listByCourier(courierId: string): Promise<OrderSummaryLedgerEntry[]>;
+  listAll(): Promise<OrderSummaryLedgerEntry[]>;
+};
 }
 
 export function createOrderSummaryRouter(dependencies: OrderSummaryRouteDependencies) {
   const router = Router();
+
+  router.get('/history', async (request, response) => {
+  try {
+    const token = request.headers.authorization
+      ?.replace(/^Bearer\s+/i, '')
+      .trim();
+    const account = token ? dependencies.getCurrentUser(token) : null;
+
+    if (!account) {
+      response.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    switch (account.role) {
+      case Role.CUSTOMER:
+        response.json(await dependencies.ledger.listByCustomer(String(account.accountID)));
+        return;
+
+      case Role.RESTAURANT: {
+        const restaurantId = await dependencies.findRestaurantId(String(account.accountID));
+        if (restaurantId === null) {
+          response.status(403).json({ error: 'No restaurant is associated with this account.' });
+          return;
+        }
+        response.json(await dependencies.ledger.listByRestaurant(restaurantId));
+        return;
+      }
+
+      case Role.COURIER:
+        response.json(await dependencies.ledger.listByCourier(String(account.accountID)));
+        return;
+
+      case Role.OPERATOR:
+        response.json(await dependencies.ledger.listAll());
+        return;
+    }
+
+    response.status(403).json({ error: 'You may not view ledger history.' });
+  } catch (error) {
+    console.error('Order summary history request failed:', error);
+    response.status(500).json({ error: 'An unexpected ledger history error occurred.' });
+  }
+});
 
   router.get('/:orderId', async (request, response) => {
     try {
@@ -88,47 +179,9 @@ export function createOrderSummaryRouter(dependencies: OrderSummaryRouteDependen
       console.error('Order summary request failed:', error);
       response.status(500).json({ error: 'An unexpected order summary error occurred.' });
     }
-  });
+  }
+);
+
 
   return router;
 }
-
-const authentication = new AuthenticationService(new RegistrationService());
-const orderStore = new PostgresOrderStore(pool);
-const { pricing } = await loadInitialCityConfiguration();
-const summaryService = new OrderSummaryService(new FareCalculator([
-  new DeliveryFeeRule(pricing),
-  new ServiceFeeRule(pricing),
-  new SmallOrderSurchargeRule(pricing),
-]));
-const ledger = new PostgresOrderSummaryLedger(pool);
-
-export default createOrderSummaryRouter({
-  getCurrentUser: (token) => authentication.getCurrentUser(token),
-  findOrderById: (orderId) => orderStore.findById(orderId),
-  findCourierId: async (orderId) => {
-    const result = await pool.query<{ assignedCourier: string | number | null }>(
-      `SELECT "assignedCourier"
-       FROM public.ready_order_details
-       WHERE order_id = $1`,
-      [orderId],
-    );
-    const assignedCourier = result.rows[0]?.assignedCourier;
-    return assignedCourier === null || assignedCourier === undefined
-      ? null
-      : String(assignedCourier);
-  },
-  findRestaurantId: async (accountId) => {
-    const result = await pool.query<{ restaurantID: string | number }>(
-      `SELECT "restaurantID"
-       FROM public."RestaurantStaff"
-       WHERE "accountID" = $1
-       LIMIT 1`,
-      [accountId],
-    );
-    const restaurantId = result.rows[0]?.restaurantID;
-    return restaurantId === undefined ? null : String(restaurantId);
-  },
-  summaryService,
-  ledger,
-});
