@@ -10,11 +10,13 @@ import {
   SmallOrderSurchargeRule,
 } from '../domain/PRC/PricingRules.js';
 import { FareCalculator } from '../domain/PRC/FareCalculator.js';
-import { OrderSummaryService } from '../domain/PRC/OrderSummary.js';
 import { Role } from '../domain/REG/Role.js';
 import type { Account } from '../domain/REG/Account.js';
 import { pool } from '../db.js';
 import { PostgresOrderStore } from '../infrastructure/order/PostgresOrderStore.js';
+import { OrderSummaryService, type OrderSummary } from '../domain/PRC/OrderSummary.js';
+import { PostgresOrderSummaryLedger } from '../infrastructure/PRC/PostgresOrderSummaryLedger.js';
+
 
 export interface OrderSummaryRouteDependencies {
   getCurrentUser(token: string): Account | null;
@@ -22,6 +24,9 @@ export interface OrderSummaryRouteDependencies {
   findCourierId(orderId: string): Promise<string | null>;
   findRestaurantId(accountId: string): Promise<string | null>;
   summaryService: OrderSummaryService;
+  ledger: {
+    record(summary: OrderSummary): Promise<void>;
+  };
 }
 
 export function createOrderSummaryRouter(dependencies: OrderSummaryRouteDependencies) {
@@ -76,7 +81,9 @@ export function createOrderSummaryRouter(dependencies: OrderSummaryRouteDependen
       if (courierId === null) {
         courierId = await dependencies.findCourierId(order.id);
       }
-      response.json(dependencies.summaryService.summarize(order, courierId));
+      const summary = dependencies.summaryService.summarize(order, courierId);
+      await dependencies.ledger.record(summary);
+      response.json(summary);
     } catch (error) {
       console.error('Order summary request failed:', error);
       response.status(500).json({ error: 'An unexpected order summary error occurred.' });
@@ -94,6 +101,7 @@ const summaryService = new OrderSummaryService(new FareCalculator([
   new ServiceFeeRule(pricing),
   new SmallOrderSurchargeRule(pricing),
 ]));
+const ledger = new PostgresOrderSummaryLedger(pool);
 
 export default createOrderSummaryRouter({
   getCurrentUser: (token) => authentication.getCurrentUser(token),
@@ -122,4 +130,5 @@ export default createOrderSummaryRouter({
     return restaurantId === undefined ? null : String(restaurantId);
   },
   summaryService,
+  ledger,
 });

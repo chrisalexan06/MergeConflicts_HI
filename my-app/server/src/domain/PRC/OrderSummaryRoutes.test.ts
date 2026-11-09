@@ -20,6 +20,7 @@ import {
 } from './PricingRules.js';
 import { OrderSummaryService } from './OrderSummary.js';
 import type { OrderSummaryRouteDependencies } from '../../routes/orderSummaryRoutes.js';
+import type { OrderSummary } from './OrderSummary.js';
 
 type RouterFactory = typeof import('../../routes/orderSummaryRoutes.js').createOrderSummaryRouter;
 let createOrderSummaryRouter: RouterFactory;
@@ -51,6 +52,7 @@ function createOrder(delivered: boolean): Order {
 async function createDependencies(account: Account, order: Order | null): Promise<OrderSummaryRouteDependencies> {
   const { pricing } = await loadInitialCityConfiguration();
   return {
+    ledger: {record:async () => {}},
     getCurrentUser: (token) => token === 'valid-token' ? account : null,
     findOrderById: async () => order,
     findCourierId: async () => '3',
@@ -63,11 +65,21 @@ async function createDependencies(account: Account, order: Order | null): Promis
   };
 }
 
-async function requestSummary(account: Account, order: Order | null): Promise<Response> {
+async function requestSummary(
+  account: Account,
+  order: Order | null,
+  recordedSummaries: OrderSummary[] = [],
+): Promise<Response> {
   const app = express();
-  app.use('/api/order-summaries', createOrderSummaryRouter(
-    await createDependencies(account, order),
-  ));
+  const dependencies = await createDependencies(account, order);
+  dependencies.ledger = {
+    record: async (summary) => {
+      recordedSummaries.push(summary);
+    },
+  };
+
+  app.use('/api/order-summaries', createOrderSummaryRouter(dependencies));
+
   const server = createServer(app);
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -107,15 +119,20 @@ describe('Order summary route', () => {
   });
 
   it('returns 200 with a delivered summary', async () => {
+    const recordedSummaries: OrderSummary[] = [];
     const response = await requestSummary(
       new CustomerAccount(1, 'customer', 'password', 'customer@example.com'),
       createOrder(true),
+      recordedSummaries
     );
+
     const summary = await response.json() as { orderId: string; courierId: string };
 
     assert.equal(response.status, 200);
     assert.equal(summary.orderId, '1');
     assert.equal(summary.courierId, '3');
+    assert.equal(recordedSummaries.length, 1);
+    assert.equal(recordedSummaries[0]?.orderId, '1');
   });
 
   it('returns 403 to a role or account not associated with the order', async () => {
