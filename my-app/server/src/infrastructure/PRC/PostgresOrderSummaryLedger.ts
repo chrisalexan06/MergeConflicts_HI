@@ -19,27 +19,28 @@ export class PostgresOrderSummaryLedger {
   constructor(private readonly db: Pool) {}
 
   async record(summary: OrderSummary): Promise<void> {
-    await this.db.query(
-      `INSERT INTO public.order_summary_ledger
-         (order_id, order_status, customer_id, restaurant_id, courier_id,
-          placed_at, delivered_at, subtotal, total, lines, breakdown)
-       SELECT o.order_id, o."orderStatus", o."customerID", o."restaurantID",
-              $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb
-       FROM public.orders o
-       WHERE o.order_id = $1
-       ON CONFLICT (order_id) DO NOTHING`,
-      [
-        summary.orderId,
-        summary.courierId,
-        summary.placedAt,
-        summary.deliveredAt,
-        summary.subtotal,
-        summary.total,
-        JSON.stringify(summary.lines),
-        JSON.stringify(summary.breakdown),
-      ],
-    );
-  }
+  await this.db.query(
+    `INSERT INTO public.order_summary_ledger
+       (order_id, entry_type, amount, order_status, customer_id,
+        restaurant_id, courier_id, placed_at, delivered_at,
+        subtotal, total, lines, breakdown)
+     SELECT o.order_id, 'charge', $2, o."orderStatus", o."customerID",
+            o."restaurantID", $3, $4, $5, $6, $2, $7::jsonb, $8::jsonb
+     FROM public.orders o
+     WHERE o.order_id = $1
+     ON CONFLICT (order_id) WHERE entry_type = 'charge' DO NOTHING`,
+    [
+      summary.orderId,
+      summary.total,
+      summary.courierId,
+      summary.placedAt,
+      summary.deliveredAt,
+      summary.subtotal,
+      JSON.stringify(summary.lines),
+      JSON.stringify(summary.breakdown),
+    ],
+  );
+}
 
   async listByCustomer(customerId: string): Promise<OrderSummaryLedgerEntry[]> {
     return this.queryEntries('WHERE customer_id = $1', [customerId]);
@@ -72,7 +73,10 @@ export class PostgresOrderSummaryLedger {
               subtotal::float8 AS subtotal,
               total::float8 AS total,
               lines,
-              breakdown
+              breakdown,
+              ledgerEntryId: string;
+              entryType: 'charge' | 'refund';
+              amount: number;
        FROM public.order_summary_ledger
        ${whereClause}
        ORDER BY delivered_at DESC, order_id DESC`,

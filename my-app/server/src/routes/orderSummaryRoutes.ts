@@ -19,6 +19,11 @@ import {
   PostgresOrderSummaryLedger,
   type OrderSummaryLedgerEntry,
 } from '../infrastructure/PRC/PostgresOrderSummaryLedger.js';
+import {
+  createOrderSummaryHistoryStrategies,
+  type OrderSummaryHistoryLedger,
+} from '../application/PRC/OrderSummaryHistoryStrategy.js';
+import {PostgresOrderRefundStore } from '../infrastructure/PRC/PostgresOrderRefundStore.js';
 
 
 const authentication = new AuthenticationService(new RegistrationService());
@@ -30,6 +35,7 @@ const summaryService = new OrderSummaryService(new FareCalculator([
   new SmallOrderSurchargeRule(pricing),
 ]));
 const ledger = new PostgresOrderSummaryLedger(pool);
+const refundStore = new PostgresOrderRefundStore(pool);
 
 export default createOrderSummaryRouter({
   getCurrentUser: (token) => authentication.getCurrentUser(token),
@@ -59,6 +65,10 @@ export default createOrderSummaryRouter({
   },
   summaryService,
   ledger,
+  refundDeliveredOrder: (order, summary) =>
+  refundStore.refundDeliveredOrder(order, summary),
+
+  
 });
 
 
@@ -68,19 +78,18 @@ export interface OrderSummaryRouteDependencies {
   findCourierId(orderId: string): Promise<string | null>;
   findRestaurantId(accountId: string): Promise<string | null>;
   summaryService: OrderSummaryService;
-  ledger: {
-  record(summary: OrderSummary): Promise<void>;
-  listByCustomer(customerId: string): Promise<OrderSummaryLedgerEntry[]>;
-  listByRestaurant(restaurantId: string): Promise<OrderSummaryLedgerEntry[]>;
-  listByCourier(courierId: string): Promise<OrderSummaryLedgerEntry[]>;
-  listAll(): Promise<OrderSummaryLedgerEntry[]>;
-};
+  ledger: OrderSummaryHistoryLedger & {
+    record(summary: OrderSummary): Promise<void>;
+  };
+  refundDeliveredOrder(order: Order, summary: OrderSummary): Promise<boolean>;
 }
 
 export function createOrderSummaryRouter(dependencies: OrderSummaryRouteDependencies) {
   const router = Router();
 
-  router.get('/history', async (request, response) => {
+  const historyStrategies = createOrderSummaryHistoryStrategies();
+
+router.get('/history', async (request, response) => {
   try {
     const token = request.headers.authorization
       ?.replace(/^Bearer\s+/i, '')
@@ -92,34 +101,69 @@ export function createOrderSummaryRouter(dependencies: OrderSummaryRouteDependen
       return;
     }
 
-    switch (account.role) {
-      case Role.CUSTOMER:
-        response.json(await dependencies.ledger.listByCustomer(String(account.accountID)));
-        return;
+    const history = await historyStrategies[account.role].getHistory(account, {
+      ledger: dependencies.ledger,
+      findRestaurantId: dependencies.findRestaurantId,
+    });
 
-      case Role.RESTAURANT: {
-        const restaurantId = await dependencies.findRestaurantId(String(account.accountID));
-        if (restaurantId === null) {
-          response.status(403).json({ error: 'No restaurant is associated with this account.' });
-          return;
-        }
-        response.json(await dependencies.ledger.listByRestaurant(restaurantId));
-        return;
-      }
-
-      case Role.COURIER:
-        response.json(await dependencies.ledger.listByCourier(String(account.accountID)));
-        return;
-
-      case Role.OPERATOR:
-        response.json(await dependencies.ledger.listAll());
-        return;
+    if (history === null) {
+      response.status(403).json({
+        error: 'No restaurant is associated with this account.',
+      });
+      return;
     }
 
-    response.status(403).json({ error: 'You may not view ledger history.' });
+    response.json(history);
   } catch (error) {
     console.error('Order summary history request failed:', error);
-    response.status(500).json({ error: 'An unexpected ledger history error occurred.' });
+    response.status(500).json({
+      error: 'An unexpected ledger history error occurred.',
+    });
+  }
+});
+
+
+  router.post('/:orderId/refund', async (request, response) => {
+  try {
+    const token = request.headers.authorization
+      ?.replace(/^Bearer\s+/i, '')
+      .trim();
+    const account = token ? dependencies.getCurrentUser(token) : null;
+
+    if (!account) {
+      response.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (account.role !== Role.OPERATOR) {
+      response.status(403).json({ error: 'Only an operator may refund an order.' });
+      return;
+    }
+
+    const order = await dependencies.findOrderById(String(request.params.orderId));
+    if (!order) {
+      response.status(404).json({ error: 'Order was not found.' });
+      return;
+    }
+    if (order.status !== OrderStatus.DELIVERED) {
+      response.status(409).json({ error: 'Only delivered orders can be refunded.' });
+      return;
+    }
+
+    const summary = dependencies.summaryService.summarize(order);
+    order.refund();
+
+    const refunded = await dependencies.refundDeliveredOrder(order, summary);
+    if (!refunded) {
+      response.status(409).json({
+        error: 'Order status changed before the refund could be recorded.',
+      });
+      return;
+    }
+
+    response.json({ orderId: order.id, status: order.status });
+  } catch (error) {
+    console.error('Order refund request failed:', error);
+    response.status(500).json({ error: 'An unexpected order refund error occurred.' });
   }
 });
 

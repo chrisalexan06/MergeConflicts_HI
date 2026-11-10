@@ -97,6 +97,10 @@ export class Order {
   markReady(): void {
     this.transition(OrderStatus.PREPARING, OrderStatus.READY);
   }
+
+  refund(): void {
+  this.transition(OrderStatus.DELIVERED, OrderStatus.REFUNDED);
+  }
   
   public canBeAssigned(): boolean {
     return this.status === OrderStatus.READY || (this.status as string) === 'ready';

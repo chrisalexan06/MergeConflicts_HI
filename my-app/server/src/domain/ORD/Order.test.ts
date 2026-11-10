@@ -13,6 +13,16 @@ function createOrder(): Order {
     createdAt: new Date('2026-10-15T12:00:00Z'),
   });
 }
+function createDeliveredOrder(): Order {
+  const order = createOrder();
+  order.accept();
+  order.startPreparing();
+  order.markReady();
+  order.assignCourier('courier-1');
+  order.confirmPickup('courier-1');
+  order.confirmDelivery('courier-1');
+  return order;
+}
 
 describe('Order domain', () => {
   it('starts placed, calculates line totals, and advances through ready', () => {
@@ -149,4 +159,34 @@ describe('Order domain', () => {
     assert.doesNotThrow(() => order.assignCourier('courier-1'));
     assert.equal(order.courierId, 'courier-1');
   });
+
+  //for testing operator refunding the order
+  it('allows a delivered order to be refunded and records the transition', () => {
+  const order = createDeliveredOrder();
+
+  order.refund();
+
+  assert.equal(order.status, OrderStatus.REFUNDED);
+  assert.deepEqual(
+    order.transitionEvents.map(({ previousStatus, status }) => [previousStatus, status]),
+    [
+      [OrderStatus.PLACED, OrderStatus.ACCEPTED],
+      [OrderStatus.ACCEPTED, OrderStatus.PREPARING],
+      [OrderStatus.PREPARING, OrderStatus.READY],
+      [OrderStatus.READY, OrderStatus.PICKED_UP],
+      [OrderStatus.PICKED_UP, OrderStatus.DELIVERED],
+      [OrderStatus.DELIVERED, OrderStatus.REFUNDED],
+    ],
+  );
+});
+
+it('rejects refunding an order that is not delivered or has already been refunded', () => {
+  const placedOrder = createOrder();
+  assert.throws(() => placedOrder.refund(), /Cannot change order status/);
+
+  const refundedOrder = createDeliveredOrder();
+  refundedOrder.refund();
+  assert.throws(() => refundedOrder.refund(), /Cannot change order status/);
+});
+
 });

@@ -5,6 +5,7 @@ import express from 'express';
 import { loadInitialCityConfiguration } from '../../application/ORD/InitialCityConfiguration.js';
 import { Order } from '../ORD/Order.js';
 import { OrderLine } from '../ORD/OrderLine.js';
+import { OrderStatus } from '../ORD/OrderStatus.js';
 import {
   CourierAccount,
   CustomerAccount,
@@ -22,7 +23,7 @@ import { OrderSummaryService } from './OrderSummary.js';
 import type { OrderSummaryRouteDependencies } from '../../routes/orderSummaryRoutes.js';
 import type { OrderSummary } from './OrderSummary.js';
 import type { OrderSummaryLedgerEntry } from '../../infrastructure/PRC/PostgresOrderSummaryLedger.js';
-import { record } from 'zod/v4/mini';
+
 
 
 type RouterFactory = typeof import('../../routes/orderSummaryRoutes.js').createOrderSummaryRouter;
@@ -52,8 +53,18 @@ function createOrder(delivered: boolean): Order {
   return order;
 }
 
-async function createDependencies(account: Account, order: Order | null): Promise<OrderSummaryRouteDependencies> {
+type RefundCall = {
+  order: Order;
+  summary: OrderSummary;
+};
+
+async function createDependencies(
+  account: Account,
+  order: Order | null,
+  refundCalls: RefundCall[] = [],
+): Promise<OrderSummaryRouteDependencies> {
   const { pricing } = await loadInitialCityConfiguration();
+
   return {
     ledger: {
       record: async () => {},
@@ -66,11 +77,15 @@ async function createDependencies(account: Account, order: Order | null): Promis
     findOrderById: async () => order,
     findCourierId: async () => '3',
     findRestaurantId: async () => '1',
+    refundDeliveredOrder: async (refundedOrder, summary) => {
+      refundCalls.push({ order: refundedOrder, summary });
+      return true;
+    },
     summaryService: new OrderSummaryService(new FareCalculator([
       new DeliveryFeeRule(pricing),
       new ServiceFeeRule(pricing),
       new SmallOrderSurchargeRule(pricing),
-    ]))
+    ])),
   };
 }
 
@@ -107,6 +122,40 @@ async function requestSummary(
     return await fetch(`http://127.0.0.1:${address.port}/api/order-summaries/1`, {
       headers: { Authorization: 'Bearer valid-token' },
     });
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+}
+
+async function requestRefund(
+  account: Account,
+  order: Order | null,
+  refundCalls: RefundCall[] = [],
+  authenticated = true,
+): Promise<Response> {
+  const app = express();
+  const dependencies = await createDependencies(account, order, refundCalls);
+  app.use('/api/order-summaries', createOrderSummaryRouter(dependencies));
+
+  const server = createServer(app);
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  try {
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Test server did not bind to a TCP port.');
+    }
+
+    return await fetch(
+      `http://127.0.0.1:${address.port}/api/order-summaries/1/refund`,
+      authenticated ? { method: 'POST', headers: { Authorization: 'Bearer valid-token' } }
+        : { method: 'POST' },
+    );
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -272,5 +321,69 @@ it('returns 401 for unauthenticated ledger history requests', async () => {
 
   assert.equal(response.status, 401);
   assert.deepEqual(calls, []);
+});
+
+it('lets an operator refund a delivered order', async () => {
+  const order = createOrder(true);
+  const refundCalls: RefundCall[] = [];
+
+  const response = await requestRefund(
+    new OperatorAccount(4, 'operator', 'password', 'operator@example.com'),
+    order,
+    refundCalls,
+  );
+  const body = await response.json() as { orderId: string; status: string };
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body, { orderId: '1', status: 'refunded' });
+  assert.equal(order.status, OrderStatus.REFUNDED);
+  assert.equal(refundCalls.length, 1);
+  assert.equal(refundCalls[0]?.summary.orderId, '1');
+});
+
+it('does not allow a non-operator to refund an order', async () => {
+  const order = createOrder(true);
+  const refundCalls: RefundCall[] = [];
+
+  const response = await requestRefund(
+    new CustomerAccount(1, 'customer', 'password', 'customer@example.com'),
+    order,
+    refundCalls,
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal(order.status, OrderStatus.DELIVERED);
+  assert.equal(refundCalls.length, 0);
+});
+
+it('rejects refunding an order that has not been delivered', async () => {
+  const order = createOrder(false);
+  const refundCalls: RefundCall[] = [];
+
+  const response = await requestRefund(
+    new OperatorAccount(4, 'operator', 'password', 'operator@example.com'),
+    order,
+    refundCalls,
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal(order.status, OrderStatus.PLACED);
+  assert.equal(refundCalls.length, 0);
+});
+
+it('requires authentication to refund an order', async () => {
+  const order = createOrder(true);
+  const refundCalls: RefundCall[] = [];
+
+  const response = await requestRefund(
+    new OperatorAccount(4, 'operator', 'password', 'operator@example.com'),
+    order,
+    refundCalls,
+    false,
+  );
+
+  assert.equal(response.status, 401);
+  assert.equal(order.status, OrderStatus.DELIVERED);
+  assert.equal(refundCalls.length, 0);
 });
 });
