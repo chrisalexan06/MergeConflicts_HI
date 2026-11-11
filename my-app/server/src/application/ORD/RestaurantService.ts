@@ -2,6 +2,8 @@ import { pool } from '../../db.js';
 import { Menu } from '../../domain/ORD/Menu.js';
 import { Restaurant } from '../../domain/ORD/Restaurant.js';
 import { RestaurantStatus } from '../../domain/ORD/RestaurantStatus.js';
+import { MenuItemStatus } from '../../domain/ORD/MenuItemStatus.js';
+import type { MenuItem } from '../../domain/ORD/MenuItem.js';
 import { MenuService, type DatabaseQuery } from './MenuService.js';
 
 interface RestaurantRow extends Record<string, unknown> {
@@ -9,6 +11,13 @@ interface RestaurantRow extends Record<string, unknown> {
   restaurantName: string;
   restaurantPosition: string;
   restaurantStatus: string;
+}
+
+export interface StaffRestaurantSummary {
+  restaurantId: number;
+  restaurantName: string;
+  status: RestaurantStatus;
+  menuItems: MenuItem[];
 }
 
 function parseId(value: unknown, field: string): number {
@@ -90,6 +99,123 @@ export class RestaurantService {
 
     this.restaurants = restaurants;
     return this.getRestaurants();
+  }
+
+  public async getRestaurantForStaff(accountId: string): Promise<StaffRestaurantSummary | null> {
+    const result = await this.query(
+      `SELECT r."restaurantID", r."restaurantName", r."restaurantStatus"
+       FROM public."Restaurant" r
+       JOIN public."RestaurantStaff" rs
+         ON rs."restaurantID" = r."restaurantID"
+       WHERE rs."accountID" = $1
+       ORDER BY r."restaurantID"
+       LIMIT 1;`,
+      [accountId]
+    );
+
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return null;
+    }
+
+    const restaurantId = parseId(row.restaurantID, 'restaurantID');
+    if (typeof row.restaurantName !== 'string' || typeof row.restaurantStatus !== 'string') {
+      throw new Error(`Invalid restaurant data returned for restaurant ${restaurantId}.`);
+    }
+
+    const menu = await this.menuService.getMenuForRestaurant(restaurantId);
+    return {
+      restaurantId,
+      restaurantName: row.restaurantName,
+      status: parseRestaurantStatus(row.restaurantStatus, restaurantId),
+      menuItems: menu.items,
+    };
+  }
+
+  public async updateMenuItemStatusForStaff(
+    accountId: string,
+    itemId: number,
+    status: MenuItemStatus
+  ): Promise<MenuItem | null> {
+    return this.menuService.updateItemStatusForStaff(accountId, itemId, status);
+  }
+
+  public async updateMenuItemDetailsForStaff(
+    accountId: string,
+    itemId: number,
+    itemName: string,
+    price: number
+  ): Promise<MenuItem | null> {
+    return this.menuService.updateItemDetailsForStaff(accountId, itemId, itemName, price);
+  }
+
+  public async pauseRestaurantForStaff(accountId: string): Promise<StaffRestaurantSummary | null> {
+    return this.updateRestaurantStatusForStaff(accountId, RestaurantStatus.PAUSED);
+  }
+
+  private async updateRestaurantStatusForStaff(
+    accountId: string,
+    status: RestaurantStatus
+  ): Promise<StaffRestaurantSummary | null> {
+    return this.updateRestaurantStatus({ accountId }, status);
+  }
+
+  public async setRestaurantStatus(
+    restaurantId: number,
+    status: RestaurantStatus
+  ): Promise<StaffRestaurantSummary | null> {
+    return this.updateRestaurantStatus({ restaurantId }, status);
+  }
+
+  private async updateRestaurantStatus(
+    scope: { accountId?: string; restaurantId?: number },
+    status: RestaurantStatus
+  ): Promise<StaffRestaurantSummary | null> {
+    const values: unknown[] = [status];
+    const conditions: string[] = [];
+
+    if (scope.restaurantId !== undefined) {
+      values.push(scope.restaurantId);
+      conditions.push(`r."restaurantID" = $${values.length}`);
+    }
+
+    if (scope.accountId !== undefined) {
+      values.push(scope.accountId);
+      conditions.push(
+        `EXISTS (
+           SELECT 1
+           FROM public."RestaurantStaff" rs
+           WHERE rs."restaurantID" = r."restaurantID"
+             AND rs."accountID" = $${values.length}
+         )`
+      );
+    }
+
+    const result = await this.query(
+      `UPDATE public."Restaurant" r
+       SET "restaurantStatus" = $1
+       WHERE ${conditions.join(' AND ')}
+       RETURNING r."restaurantID", r."restaurantName", r."restaurantStatus";`,
+      values
+    );
+
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return null;
+    }
+
+    const restaurantId = parseId(row.restaurantID, 'restaurantID');
+    if (typeof row.restaurantName !== 'string' || typeof row.restaurantStatus !== 'string') {
+      throw new Error(`Invalid restaurant data returned for restaurant ${restaurantId}.`);
+    }
+
+    const menu = await this.menuService.getMenuForRestaurant(restaurantId);
+    return {
+      restaurantId,
+      restaurantName: row.restaurantName,
+      status: parseRestaurantStatus(row.restaurantStatus, restaurantId),
+      menuItems: menu.items,
+    };
   }
 
   public getRestaurants(): Restaurant[] {

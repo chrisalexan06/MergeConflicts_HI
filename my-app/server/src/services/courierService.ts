@@ -28,6 +28,10 @@ export class CourierService {
     return this.store.changeDuty(courierId, false);
   }
 
+  async acceptOffer(courierId: string, orderId: string): Promise<Courier> {
+    return this.store.acceptOffer(courierId, orderId);
+  }
+
   async confirmPickup(
     courierId: string,
     orderId: string

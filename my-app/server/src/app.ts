@@ -6,6 +6,9 @@ import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
 import { InitialCitySeeder } from './seed/InitialCitySeeder.js';
 import courierRoutes from './routes/couriers.js';
 import operatorDeliveryRoutes from './routes/operatorDeliveryRoutes.js';
+import operatorResetRoutes from './routes/operatorResetRoutes.js';
+import operatorRestaurantRoutes from './routes/operatorRestaurantRoutes.js';
+import operatorOrderRoutes from './routes/operatorOrderRoutes.js';
 import { DispatchQueueService } from './application/DLV/DispatchQueueService.js';
 import { pool } from './db.js';
 
@@ -18,7 +21,7 @@ app.use((req, res, next) => {
   if (origin && origin.startsWith('http://localhost:')) {
     res.header('Access-Control-Allow-Origin', origin);
   }
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
 
@@ -38,6 +41,9 @@ app.use('/api/couriers', courierRoutes);
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/test/restaurants', restaurantRoutes);
 app.use('/api/operator/delivery', operatorDeliveryRoutes);
+app.use('/api/operator/restaurants', operatorRestaurantRoutes);
+app.use('/api/operator/orders', operatorOrderRoutes);
+app.use('/api/operator', operatorResetRoutes);
 
 
 InitialCitySeeder.seed()
@@ -52,7 +58,7 @@ InitialCitySeeder.seed()
     const result = await dispatchQueue.retryPendingOrders();
 
     console.log(
-      `Dispatch recovery: ${result.assigned} assigned, ` +
+      `Dispatch recovery: ${result.offered} offers created, ` +
       `${result.waiting} waiting.`
     );
   })

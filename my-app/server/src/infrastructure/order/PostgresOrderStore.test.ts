@@ -127,6 +127,8 @@ describe("PostgresOrderStore", () => {
 			["accepted", OrderStatus.ACCEPTED],
 			["preparing", OrderStatus.PREPARING],
 			["ready", OrderStatus.READY],
+			["delivered", OrderStatus.DELIVERED],
+			["refunded", OrderStatus.REFUNDED],
 			["cancelled", OrderStatus.CANCELLED],
 			["completed", OrderStatus.COMPLETED],
 		] as const) {

@@ -2,6 +2,9 @@ import type { Pool } from 'pg';
 import type { OrderSummary } from '../../domain/PRC/OrderSummary.js';
 
 export interface OrderSummaryLedgerEntry {
+  ledgerEntryId: string;
+  entryType: 'charge' | 'refund';
+  amount: number;
   orderId: string;
   orderStatus: string;
   customerId: string;
@@ -64,6 +67,9 @@ export class PostgresOrderSummaryLedger {
   ): Promise<OrderSummaryLedgerEntry[]> {
     const result = await this.db.query<OrderSummaryLedgerEntry>(
       `SELECT order_id::text AS "orderId",
+              ledger_entry_id::text AS "ledgerEntryId",
+              entry_type AS "entryType",
+              amount::float8 AS amount,
               order_status AS "orderStatus",
               customer_id::text AS "customerId",
               restaurant_id::text AS "restaurantId",
@@ -73,13 +79,10 @@ export class PostgresOrderSummaryLedger {
               subtotal::float8 AS subtotal,
               total::float8 AS total,
               lines,
-              breakdown,
-              ledgerEntryId: string;
-              entryType: 'charge' | 'refund';
-              amount: number;
+              breakdown
        FROM public.order_summary_ledger
        ${whereClause}
-       ORDER BY delivered_at DESC, order_id DESC`,
+       ORDER BY delivered_at DESC, order_id DESC, ledger_entry_id DESC`,
       values,
     );
 
