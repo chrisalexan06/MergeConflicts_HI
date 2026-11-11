@@ -17,10 +17,14 @@ interface CourierRow {
   courierStatus: CourierStatus;
   currentOrderId: string | null;
   currentOrderStatus: string | null;
+  currentOfferId: string | null;
+  currentOfferStatus: string | null;
 }
 
 export interface CourierWithOrderStatus extends Courier {
   currentOrderStatus: string | null;
+  currentOfferId: string | null;
+  currentOfferStatus: string | null;
 }
 
 function mapCourier(row: CourierRow): CourierWithOrderStatus {
@@ -34,6 +38,10 @@ function mapCourier(row: CourierRow): CourierWithOrderStatus {
   );
   return Object.assign(courier, {
     currentOrderStatus: row.currentOrderStatus,
+    currentOfferId: row.currentOfferId === null
+      ? null
+      : String(row.currentOfferId),
+    currentOfferStatus: row.currentOfferStatus,
   });
 }
 
@@ -46,7 +54,9 @@ export class PostgresCourierStore implements ICourierStore {
       a."accountName",
       c."courierStatus",
       active.order_id AS "currentOrderId",
-      active."currentOrderStatus"
+      active."currentOrderStatus",
+      offer.order_id AS "currentOfferId",
+      offer."currentOfferStatus"
     FROM public."Courier" c
     JOIN public."Account" a
       ON a."accountID" = c."accountID"
@@ -59,6 +69,37 @@ export class PostgresCourierStore implements ICourierStore {
         AND ca.unassigned_at IS NULL
       LIMIT 1
     ) active ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT o.order_id, o."orderStatus" AS "currentOfferStatus"
+      FROM public.ready_order_details d
+      JOIN public.orders o
+        ON o.order_id = d.order_id
+      JOIN public.queue_entries qe
+        ON qe.order_id = o.order_id
+      JOIN public.queues q
+        ON q.queue_id = qe.queue_id
+      WHERE d."assignedCourier" = c."accountID"
+        AND c."courierStatus" = 'idle'
+        AND d.pickup_time IS NULL
+        AND d.delivery_time IS NULL
+        AND o."orderStatus" = 'ready'
+        AND q.name = 'dispatch'
+        AND qe.exited_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.courier_assignments ca
+          WHERE ca.order_id = o.order_id
+            AND ca.unassigned_at IS NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.courier_assignments courier_assignment
+          WHERE courier_assignment.courier_id = c."accountID"
+            AND courier_assignment.unassigned_at IS NULL
+        )
+      ORDER BY qe.entered_at, qe.queue_entry_id
+      LIMIT 1
+    ) offer ON TRUE
   `;
 
   async findById(id: string): Promise<CourierWithOrderStatus | null> {
@@ -78,6 +119,7 @@ export class PostgresCourierStore implements ICourierStore {
       `${this.courierQuery}
        WHERE c."courierStatus" = 'idle'
          AND active.order_id IS NULL
+         AND offer.order_id IS NULL
        ORDER BY c."accountID"`
     );
 
@@ -100,6 +142,25 @@ async findAvailableCouriers(): Promise<CourierLocation[]> {
          FROM public.courier_assignments ca
          WHERE ca.courier_id = c."accountID"
            AND ca.unassigned_at IS NULL
+       )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM public.ready_order_details d
+         JOIN public.orders o ON o.order_id = d.order_id
+         JOIN public.queue_entries qe ON qe.order_id = o.order_id
+         JOIN public.queues q ON q.queue_id = qe.queue_id
+         WHERE d."assignedCourier" = c."accountID"
+           AND d.pickup_time IS NULL
+           AND d.delivery_time IS NULL
+           AND o."orderStatus" = 'ready'
+           AND q.name = 'dispatch'
+           AND qe.exited_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM public.courier_assignments active
+             WHERE active.order_id = o.order_id
+               AND active.unassigned_at IS NULL
+           )
        )`
   );
 
@@ -249,6 +310,9 @@ async findRestaurantPosition(
       if (onDuty) {
         courier.goOnDuty();
       } else {
+        if (await this.hasPendingOffer(client, courierId)) {
+          throw new Error('Courier must accept the offered order before going offline.');
+        }
         courier.goOffDuty();
       }
 
@@ -261,6 +325,151 @@ async findRestaurantPosition(
 
       return await this.readCourier(client, courierId);
     });
+  }
+
+  async acceptOffer(courierId: string, orderId: string): Promise<Courier> {
+    return this.transaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(42042, 4);');
+
+      const order = await client.query<{ orderStatus: string }>(
+        `SELECT "orderStatus"
+         FROM public.orders
+         WHERE order_id = $1
+         FOR UPDATE`,
+        [orderId]
+      );
+      if (order.rows[0]?.orderStatus !== 'ready') {
+        throw new Error('Only ready orders can be accepted.');
+      }
+
+      const courier = await this.lockCourier(client, courierId);
+      if (courier.status !== CourierStatus.IDLE) {
+        throw new Error('Courier must be idle to accept an offer.');
+      }
+
+      const offer = await client.query(
+        `SELECT d.order_id
+         FROM public.ready_order_details d
+         WHERE d.order_id = $1
+           AND d."assignedCourier" = $2
+           AND d.pickup_time IS NULL
+           AND d.delivery_time IS NULL
+         FOR UPDATE`,
+        [orderId, courierId]
+      );
+      if (offer.rowCount !== 1) {
+        throw new Error('No pending offer for this courier and order.');
+      }
+
+      const queueEntry = await client.query(
+        `SELECT qe.queue_entry_id
+         FROM public.queue_entries qe
+         JOIN public.queues q ON q.queue_id = qe.queue_id
+         WHERE qe.order_id = $1
+           AND q.name = 'dispatch'
+           AND qe.exited_at IS NULL
+         FOR UPDATE OF qe`,
+        [orderId]
+      );
+      if (queueEntry.rowCount !== 1) {
+        throw new Error('The dispatch offer is no longer active.');
+      }
+
+      const courierAssignment = await client.query(
+        `SELECT assignment_id
+         FROM public.courier_assignments
+         WHERE courier_id = $1
+           AND unassigned_at IS NULL
+         LIMIT 1`,
+        [courierId]
+      );
+      if (courierAssignment.rowCount !== 0) {
+        throw new Error('Courier already has an active assignment.');
+      }
+
+      if (await this.hasPendingOffer(client, courierId, orderId)) {
+        throw new Error('Courier already has another pending offer.');
+      }
+
+      await client.query(
+        `INSERT INTO public.courier_assignments (order_id, courier_id)
+         VALUES ($1, $2)`,
+        [orderId, courierId]
+      );
+
+      const courierUpdate = await client.query(
+        `UPDATE public."Courier"
+         SET "courierStatus" = 'assigned'
+         WHERE "accountID" = $1
+           AND "courierStatus" = 'idle'`,
+        [courierId]
+      );
+      if (courierUpdate.rowCount !== 1) {
+        throw new Error('Courier is no longer available.');
+      }
+
+      const queueUpdate = await client.query(
+        `UPDATE public.queue_entries
+         SET exited_at = now(),
+             readiness_status = 'ready'
+         WHERE queue_entry_id = $1
+           AND exited_at IS NULL`,
+        [queueEntry.rows[0].queue_entry_id]
+      );
+      if (queueUpdate.rowCount !== 1) {
+        throw new Error('Dispatch offer could not be closed.');
+      }
+
+      await client.query(
+        `INSERT INTO public.order_events (order_id, event_type)
+         VALUES ($1, 'courier_assigned')`,
+        [orderId]
+      );
+
+      return this.readCourier(client, courierId);
+    });
+  }
+
+  private async hasPendingOffer(
+    client: PoolClient,
+    courierId: string,
+    excludedOrderId?: string
+  ): Promise<boolean> {
+    const result = await client.query(
+      `SELECT 1
+       FROM public.ready_order_details d
+       JOIN public.orders o ON o.order_id = d.order_id
+       JOIN public.queue_entries qe ON qe.order_id = o.order_id
+       JOIN public.queues q ON q.queue_id = qe.queue_id
+       WHERE d."assignedCourier" = $1
+         AND EXISTS (
+           SELECT 1
+           FROM public."Courier" c
+           WHERE c."accountID" = $1
+             AND c."courierStatus" = 'idle'
+         )
+         AND ($2::bigint IS NULL OR d.order_id <> $2)
+         AND d.pickup_time IS NULL
+         AND d.delivery_time IS NULL
+         AND o."orderStatus" = 'ready'
+         AND q.name = 'dispatch'
+         AND qe.exited_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1
+           FROM public.courier_assignments ca
+           WHERE ca.order_id = o.order_id
+             AND ca.unassigned_at IS NULL
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM public.courier_assignments courier_assignment
+           WHERE courier_assignment.courier_id = $1
+             AND courier_assignment.unassigned_at IS NULL
+         )
+       LIMIT 1`,
+      [courierId, excludedOrderId ?? null]
+    );
+    return result.rowCount !== 0;
   }
 
   async pickup(
@@ -490,6 +699,9 @@ async findRestaurantPosition(
 
     const courier = await this.lockCourier(client, courierId);
 
+    if (await this.hasPendingOffer(client, courierId)) {
+      throw new Error('Courier already has a pending offer.');
+    }
 
     courier.acceptOrder(orderId);
 
@@ -612,6 +824,10 @@ async reassignOrder(
 
     if (newCourier?.courierStatus !== 'idle') {
       throw new Error('Replacement courier must be idle.');
+    }
+
+    if (await this.hasPendingOffer(client, newCourierId)) {
+      throw new Error('Replacement courier has a pending offer.');
     }
 
     const busy = await client.query(

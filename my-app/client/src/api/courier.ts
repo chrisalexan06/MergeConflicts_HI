@@ -28,6 +28,24 @@ export function getCurrentCourier(token: string): Promise<CurrentCourier> {
   return request<CurrentCourier>(token, '/me');
 }
 
+export function goOnDuty(token: string): Promise<CourierActionResult> {
+  return request<CourierActionResult>(token, '/on-duty', {
+    method: 'POST',
+  });
+}
+
+export function goOffDuty(token: string): Promise<CourierActionResult> {
+  return request<CourierActionResult>(token, '/off-duty', {
+    method: 'POST',
+  });
+}
+
+export function acceptOffer(token: string, orderId: string): Promise<CourierActionResult> {
+  return request<CourierActionResult>(token, `/orders/${encodeURIComponent(orderId)}/accept`, {
+    method: 'POST',
+  });
+}
+
 export function confirmPickup(token: string, orderId: string): Promise<CourierActionResult> {
   return request<CourierActionResult>(token, `/orders/${encodeURIComponent(orderId)}/pickup`, {
     method: 'POST',

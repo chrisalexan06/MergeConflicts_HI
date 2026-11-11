@@ -37,6 +37,10 @@ const summaryService = new OrderSummaryService(new FareCalculator([
 const ledger = new PostgresOrderSummaryLedger(pool);
 const refundStore = new PostgresOrderRefundStore(pool);
 
+export function resetOrderSummaryCache(): void {
+  summaryService.reset();
+}
+
 export default createOrderSummaryRouter({
   getCurrentUser: (token) => authentication.getCurrentUser(token),
   findOrderById: (orderId) => orderStore.findById(orderId),

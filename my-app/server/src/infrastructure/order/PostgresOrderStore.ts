@@ -39,6 +39,8 @@ function databaseStatusToDomain(status: string): OrderStatus {
 			return OrderStatus.PICKED_UP;
 		case "delivered":
 			return OrderStatus.DELIVERED;
+		case "refunded":
+			return OrderStatus.REFUNDED;
 		case "cancelled":
 			return OrderStatus.CANCELLED;
 		case "completed":
@@ -227,6 +229,19 @@ export class PostgresOrderStore implements OrderRepository, OrderCatalog {
 		const result = await this.database.query<OrderRow>(
 			`${orderSelect} WHERE o."restaurantID" = $1 ORDER BY o.created_at, o.order_id, l."orderLineID"`,
 			[restaurantId],
+		);
+		const grouped = new Map<string, OrderRow[]>();
+		for (const row of result.rows) {
+			const group = grouped.get(row.order_id) ?? [];
+			group.push(row);
+			grouped.set(row.order_id, group);
+		}
+		return [...grouped.values()].map((rows) => toOrder(rows)!).filter(Boolean);
+	}
+
+	async findAll(): Promise<Order[]> {
+		const result = await this.database.query<OrderRow>(
+			`${orderSelect} ORDER BY o.created_at DESC, o.order_id DESC, l."orderLineID"`,
 		);
 		const grouped = new Map<string, OrderRow[]>();
 		for (const row of result.rows) {

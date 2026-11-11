@@ -64,7 +64,9 @@ router.get('/me', async (_req, res) => {
       id: courier.id,
       status: courier.status,
       currentOrderId: courier.currentOrderId,
-      currentOrderStatus: courier.currentOrderStatus
+      currentOrderStatus: courier.currentOrderStatus,
+      currentOfferId: courier.currentOfferId,
+      currentOfferStatus: courier.currentOfferStatus
     });
   } catch (error) {
     sendError(res, error);
@@ -97,6 +99,22 @@ router.post('/off-duty', async (_req, res) => {
     );
 
     res.json({ status: courier.status });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+router.post('/orders/:orderId/accept', async (req, res) => {
+  try {
+    const courier = await courierService.acceptOffer(
+      res.locals.courierId,
+      String(req.params.orderId)
+    );
+
+    res.json({
+      status: courier.status,
+      currentOrderId: courier.currentOrderId
+    });
   } catch (error) {
     sendError(res, error);
   }

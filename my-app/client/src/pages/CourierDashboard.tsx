@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { confirmDelivery, confirmPickup, getCurrentCourier } from '../api/courier';
+import {
+  confirmDelivery,
+  confirmPickup,
+  getCurrentCourier,
+  acceptOffer,
+  goOffDuty,
+  goOnDuty,
+} from '../api/courier';
+import { getOrderSummary } from '../api/orderSummaries';
 import type { CurrentCourier } from '../types/courier';
+import './CourierDashboard.css';
 
 interface CourierDashboardProps {
   token: string;
@@ -44,6 +53,16 @@ export default function CourierDashboard({ token }: CourierDashboardProps) {
     try {
       await action(token, courier.currentOrderId);
       await refreshCourier();
+      if (action === confirmDelivery) {
+        try {
+          await getOrderSummary(token, courier.currentOrderId);
+        } catch (summaryError) {
+          const message = summaryError instanceof Error
+            ? summaryError.message
+            : 'Could not record the delivered order summary.';
+          setError(`Delivery was confirmed, but its ledger entry could not be recorded: ${message}`);
+        }
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not update the order.');
     } finally {
@@ -51,32 +70,147 @@ export default function CourierDashboard({ token }: CourierDashboardProps) {
     }
   }
 
+  async function handleDutyChange(action: typeof goOnDuty | typeof goOffDuty) {
+    setUpdating(true);
+    setError(null);
+    try {
+      await action(token);
+      await refreshCourier();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not update courier duty status.');
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function handleAcceptOffer() {
+    if (!courier?.currentOfferId) return;
+
+    setUpdating(true);
+    setError(null);
+    try {
+      await acceptOffer(token, courier.currentOfferId);
+      await refreshCourier();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not accept the offer.');
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   return (
-    <section className="card">
-      <h1 className="page-title">Courier Dashboard</h1>
-      {loading && <p className="muted">Loading courier status...</p>}
+    <section className="card courier-dashboard">
+      <header className="courier-dashboard-header">
+        <div>
+          <p className="courier-eyebrow">On the road</p>
+          <h1 className="page-title">Courier Dashboard</h1>
+        </div>
+      </header>
+      {loading && <p className="muted courier-loading">Loading courier status...</p>}
       {error && <div role="alert" className="alert alert-error">{error}</div>}
       {!loading && courier && (
         <>
-          <p>Current assigned order: {courier.currentOrderId ?? 'None'}</p>
-          <p>Current order status: {courier.currentOrderStatus ?? 'None'}</p>
-          <div className="actions">
-            <button
-              type="button"
-              className="btn"
-              disabled={updating || courier.currentOrderStatus !== 'ready'}
-              onClick={() => void handleConfirmation(confirmPickup)}
-            >
-              Confirm Pickup
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={updating || courier.currentOrderStatus !== 'picked_up'}
-              onClick={() => void handleConfirmation(confirmDelivery)}
-            >
-              Confirm Delivery
-            </button>
+          <div className="courier-summary-grid" aria-label="Courier current state">
+            <article className="courier-summary-card">
+              <span className="courier-summary-label">Courier Status</span>
+              <strong className={`courier-summary-value courier-status-value courier-status-value--${courier.status}`}>
+                {courier.status}
+              </strong>
+            </article>
+            <article className="courier-summary-card">
+              <span className="courier-summary-label">Current Assigned Order</span>
+              <strong className="courier-summary-value">
+                {courier.currentOrderId ? `#${courier.currentOrderId}` : 'None'}
+              </strong>
+            </article>
+            <article className="courier-summary-card">
+              <span className="courier-summary-label">Current Order Status</span>
+              <strong className={`courier-summary-value courier-order-status courier-order-status--${courier.currentOrderStatus ?? 'none'}`}>
+                {courier.currentOrderStatus ?? '—'}
+              </strong>
+            </article>
+          </div>
+          {courier.currentOfferId && (
+            <section className="courier-offer-card" aria-labelledby="courier-offer-heading">
+              <div className="courier-offer-copy">
+                <p className="courier-offer-eyebrow">A delivery is waiting</p>
+                <h2 id="courier-offer-heading">New Delivery Offer</h2>
+                <p className="courier-offer-order">Order #{courier.currentOfferId}</p>
+                <p className="courier-offer-help">Accept this offer to take the delivery.</p>
+              </div>
+              <button
+                type="button"
+                className="btn courier-offer-button"
+                disabled={updating}
+                onClick={() => void handleAcceptOffer()}
+              >
+                {updating ? 'Accepting…' : 'Accept Offer'}
+              </button>
+            </section>
+          )}
+          <div className="courier-action-sections">
+            <section className="courier-action-section" aria-labelledby="courier-duty-heading">
+              <div className="courier-section-heading">
+                <h2 id="courier-duty-heading">Duty</h2>
+                <p>Manage your availability for deliveries.</p>
+              </div>
+              <div className="courier-action-row">
+                {courier.status === 'offline' && (
+                  <button
+                    type="button"
+                    className="btn courier-action-button"
+                    disabled={updating}
+                    onClick={() => void handleDutyChange(goOnDuty)}
+                  >
+                    {updating ? 'Updating…' : 'Go On Duty'}
+                  </button>
+                )}
+                {courier.status === 'idle' && courier.currentOrderId === null && !courier.currentOfferId && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary courier-action-button"
+                    disabled={updating}
+                    onClick={() => void handleDutyChange(goOffDuty)}
+                  >
+                    {updating ? 'Updating…' : 'Go Off Duty'}
+                  </button>
+                )}
+              </div>
+            </section>
+            <section className="courier-action-section" aria-labelledby="courier-delivery-heading">
+              <div className="courier-section-heading">
+                <h2 id="courier-delivery-heading">Delivery Actions</h2>
+                <p>Update your active delivery as it progresses.</p>
+              </div>
+              <div className="courier-delivery-actions">
+                <div className="courier-delivery-action">
+                  <button
+                    type="button"
+                    className="btn courier-action-button"
+                    disabled={updating || courier.currentOrderStatus !== 'ready'}
+                    onClick={() => void handleConfirmation(confirmPickup)}
+                  >
+                    Confirm Pickup
+                  </button>
+                  {courier.currentOrderStatus !== 'ready' && (
+                    <p className="courier-action-help">Pickup becomes available when the order is ready.</p>
+                  )}
+                </div>
+                <div className="courier-delivery-action">
+                  <button
+                    type="button"
+                    className="btn courier-action-button"
+                    disabled={updating || courier.currentOrderStatus !== 'picked_up'}
+                    onClick={() => void handleConfirmation(confirmDelivery)}
+                  >
+                    Confirm Delivery
+                  </button>
+                  {courier.currentOrderStatus !== 'picked_up' && (
+                    <p className="courier-action-help">Delivery becomes available after pickup.</p>
+                  )}
+                </div>
+              </div>
+            </section>
           </div>
         </>
       )}

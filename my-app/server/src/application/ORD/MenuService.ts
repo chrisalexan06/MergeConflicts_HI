@@ -79,4 +79,80 @@ export class MenuService {
     const menu = await this.getMenuForRestaurant(restaurantId);
     return menu.items.find((item) => item.itemId === itemId);
   }
+
+  public async updateItemStatusForStaff(
+    accountId: string,
+    itemId: number,
+    status: MenuItemStatus
+  ): Promise<MenuItem | null> {
+    const result = await this.query(
+      `UPDATE public."MenuItems" mi
+       SET "itemStatus" = $3
+       FROM public."Menu" m
+       JOIN public."RestaurantStaff" rs
+         ON rs."restaurantID" = m."restoID"
+       WHERE mi."menuID" = m."menuID"
+         AND rs."accountID" = $1
+         AND mi."itemID" = $2
+       RETURNING mi."itemID", mi."itemName", mi."itemPrice", mi."itemStatus";`,
+      [accountId, itemId, status]
+    );
+
+    const row = result.rows[0] as MenuItemRow | undefined;
+    if (!row) {
+      return null;
+    }
+
+    const updatedItemId = parseId(row.itemID);
+    if (typeof row.itemName !== 'string' || typeof row.itemStatus !== 'string'
+      || row.itemPrice === null) {
+      throw new Error(`Invalid menu item data returned for item ${updatedItemId}.`);
+    }
+
+    return new MenuItem(
+      updatedItemId,
+      row.itemName,
+      parsePrice(row.itemPrice, updatedItemId),
+      parseMenuItemStatus(row.itemStatus, updatedItemId)
+    );
+  }
+
+  public async updateItemDetailsForStaff(
+    accountId: string,
+    itemId: number,
+    itemName: string,
+    price: number
+  ): Promise<MenuItem | null> {
+    const result = await this.query(
+      `UPDATE public."MenuItems" mi
+       SET "itemName" = $3,
+           "itemPrice" = $4
+       FROM public."Menu" m
+       JOIN public."RestaurantStaff" rs
+         ON rs."restaurantID" = m."restoID"
+       WHERE mi."menuID" = m."menuID"
+         AND rs."accountID" = $1
+         AND mi."itemID" = $2
+       RETURNING mi."itemID", mi."itemName", mi."itemPrice", mi."itemStatus";`,
+      [accountId, itemId, itemName, price]
+    );
+
+    const row = result.rows[0] as MenuItemRow | undefined;
+    if (!row) {
+      return null;
+    }
+
+    const updatedItemId = parseId(row.itemID);
+    if (typeof row.itemName !== 'string' || typeof row.itemStatus !== 'string'
+      || row.itemPrice === null) {
+      throw new Error(`Invalid menu item data returned for item ${updatedItemId}.`);
+    }
+
+    return new MenuItem(
+      updatedItemId,
+      row.itemName,
+      parsePrice(row.itemPrice, updatedItemId),
+      parseMenuItemStatus(row.itemStatus, updatedItemId)
+    );
+  }
 }

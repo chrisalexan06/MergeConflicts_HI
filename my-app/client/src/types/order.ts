@@ -4,7 +4,8 @@ export type OrderStatus =
 	| "preparing"
 	| "ready"
 	| "completed"
-	| "cancelled";
+	| "cancelled"
+	| "refunded";
 
 export interface OrderItem {
 	itemId: number;

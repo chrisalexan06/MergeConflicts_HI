@@ -1,6 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import {
+  getOperatorOrders,
+  getOperatorLedgerHistory,
+  refundOperatorOrder,
+  reassignOperatorOrder,
+  restoreInitialState,
+  updateOperatorRestaurantStatus,
+  type OperatorLedgerEntry,
+  type OperatorOrder,
+  type OperatorRestaurantStatus,
+} from '../api/operator';
 import './OperatorDashboard.css';
 
 interface RestaurantMarker {
@@ -39,6 +50,26 @@ function escapeHtml(value: string): string {
 export default function OperatorDashboard({ token }: { token: string }) {
   const [data, setData] = useState<DashboardMapData | null>(null);
   const [error, setError] = useState('');
+  const [resetFeedback, setResetFeedback] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetInProgress, setResetInProgress] = useState(false);
+  const [updatingRestaurantId, setUpdatingRestaurantId] = useState<number | null>(null);
+  const [restaurantStatusFeedback, setRestaurantStatusFeedback] = useState('');
+  const [restaurantStatusError, setRestaurantStatusError] = useState('');
+  const [reassignmentOrderId, setReassignmentOrderId] = useState('');
+  const [reassignmentCourierId, setReassignmentCourierId] = useState('');
+  const [confirmedHandoff, setConfirmedHandoff] = useState(false);
+  const [reassignmentInProgress, setReassignmentInProgress] = useState(false);
+  const [reassignmentFeedback, setReassignmentFeedback] = useState('');
+  const [reassignmentError, setReassignmentError] = useState('');
+  const [ledgerEntries, setLedgerEntries] = useState<OperatorLedgerEntry[]>([]);
+  const [ledgerError, setLedgerError] = useState('');
+  const [refundingOrderId, setRefundingOrderId] = useState<string | null>(null);
+  const [refundFeedback, setRefundFeedback] = useState('');
+  const [refundError, setRefundError] = useState('');
+  const [orders, setOrders] = useState<OperatorOrder[]>([]);
+  const [ordersError, setOrdersError] = useState('');
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const mapElement = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,10 +89,135 @@ export default function OperatorDashboard({ token }: { token: string }) {
         if (!response.ok) throw new Error(body.error ?? 'Could not load map data.');
         return body as DashboardMapData;
       })
-      .then(value => { if (active) setData(value); })
+      .then(value => {
+        if (active) {
+          setError('');
+          setData(value);
+        }
+      })
       .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Could not load map data.'); });
     return () => { active = false; };
-  }, [token]);
+  }, [token, refreshVersion]);
+
+  useEffect(() => {
+    let active = true;
+    void getOperatorOrders(token)
+      .then(allOrders => {
+        if (active) {
+          setOrders(allOrders);
+          setOrdersError('');
+        }
+      })
+      .catch(reason => {
+        if (active) {
+          setOrdersError(reason instanceof Error ? reason.message : 'Could not load all orders.');
+        }
+      });
+    return () => { active = false; };
+  }, [token, refreshVersion]);
+
+  useEffect(() => {
+    let active = true;
+    void getOperatorLedgerHistory(token)
+      .then(entries => {
+        if (active) {
+          setLedgerEntries(entries);
+          setLedgerError('');
+        }
+      })
+      .catch(reason => {
+        if (active) {
+          setLedgerError(reason instanceof Error ? reason.message : 'Could not load ledger history.');
+        }
+      });
+    return () => { active = false; };
+  }, [token, refreshVersion]);
+
+  async function handleRestoreInitialState(): Promise<void> {
+    if (!window.confirm('Restore the initial SugarDash state? Current orders and operational history will be removed.')) {
+      return;
+    }
+
+    setResetInProgress(true);
+    setResetFeedback('');
+    setResetError('');
+    try {
+      await restoreInitialState(token);
+      setResetFeedback('Initial state restored successfully.');
+      setRefreshVersion(version => version + 1);
+    } catch (reason) {
+      setResetError(reason instanceof Error ? reason.message : 'Could not restore the initial state.');
+    } finally {
+      setResetInProgress(false);
+    }
+  }
+
+  async function handleRestaurantStatusChange(
+    restaurantId: number,
+    status: OperatorRestaurantStatus
+  ): Promise<void> {
+    setUpdatingRestaurantId(restaurantId);
+    setRestaurantStatusFeedback('');
+    setRestaurantStatusError('');
+    try {
+      await updateOperatorRestaurantStatus(token, restaurantId, status);
+      setRestaurantStatusFeedback(`Restaurant status updated to ${status}.`);
+      setRefreshVersion(version => version + 1);
+    } catch (reason) {
+      setRestaurantStatusError(
+        reason instanceof Error ? reason.message : 'Could not update restaurant status.'
+      );
+    } finally {
+      setUpdatingRestaurantId(null);
+    }
+  }
+
+  async function handleReassignOrder(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const orderId = Number(reassignmentOrderId);
+    const courierId = Number(reassignmentCourierId);
+    if (!Number.isSafeInteger(orderId) || orderId <= 0
+      || !Number.isSafeInteger(courierId) || courierId <= 0) {
+      setReassignmentError('Enter valid positive integer order and courier IDs.');
+      setReassignmentFeedback('');
+      return;
+    }
+
+    setReassignmentInProgress(true);
+    setReassignmentFeedback('');
+    setReassignmentError('');
+    try {
+      const result = await reassignOperatorOrder(
+        token,
+        orderId,
+        courierId,
+        confirmedHandoff
+      );
+      setReassignmentFeedback(result.message);
+      setRefreshVersion(version => version + 1);
+    } catch (reason) {
+      setReassignmentError(
+        reason instanceof Error ? reason.message : 'Could not reassign the order.'
+      );
+    } finally {
+      setReassignmentInProgress(false);
+    }
+  }
+
+  async function handleRefundOrder(orderId: string): Promise<void> {
+    setRefundingOrderId(orderId);
+    setRefundFeedback('');
+    setRefundError('');
+    try {
+      await refundOperatorOrder(token, orderId);
+      setRefundFeedback(`Order ${orderId} refunded successfully.`);
+      setRefreshVersion(version => version + 1);
+    } catch (reason) {
+      setRefundError(reason instanceof Error ? reason.message : 'Could not refund the order.');
+    } finally {
+      setRefundingOrderId(null);
+    }
+  }
 
   useEffect(() => {
     if (!data || !mapElement.current) return;
@@ -101,24 +257,223 @@ export default function OperatorDashboard({ token }: { token: string }) {
     return () => { map.remove(); };
   }, [data]);
 
-  if (error) return <section className="operator-dashboard"><h1>City operations</h1><p role="alert">{error}</p></section>;
-  if (!data) return <section className="operator-dashboard"><h1>City operations</h1><p>Loading city map…</p></section>;
-
   return (
     <section className="operator-dashboard">
       <div className="operator-heading">
         <div><p className="eyebrow">Live city overview</p><h1>City operations</h1></div>
-        <p>{data.restaurants.length} restaurants · {data.couriers.length} on-duty couriers</p>
+        {data && <p>{data.restaurants.length} restaurants · {data.couriers.length} on-duty couriers</p>}
       </div>
-      <div className="operator-map-shell">
-        <div ref={mapElement} className="operator-map" role="application" aria-label="Interactive map of restaurants and on-duty couriers" />
+      <div className="operator-reset-controls">
+        <button type="button" onClick={handleRestoreInitialState} disabled={resetInProgress}>
+          {resetInProgress ? 'Restoring…' : 'Restore Initial State'}
+        </button>
+        {resetFeedback && <p role="status">{resetFeedback}</p>}
+        {resetError && <p role="alert">{resetError}</p>}
       </div>
-      <div className="map-legend" aria-label="Map legend">
-        <div className="legend-group"><strong>Map markers</strong><span><i className="legend-restaurant">R</i> Restaurant</span><span><i className="legend-courier">C</i> Courier</span></div>
-        <div className="legend-group"><strong>Preparation queue</strong><span><i className="queue-key queue-short" /> Short: 0–2</span><span><i className="queue-key queue-building" /> Building: 3–5</span><span><i className="queue-key queue-long" /> Long: 6+ or paused</span></div>
-        <div className="legend-group"><strong>Restaurant status</strong><span><i className="status-dot status-open" /> Open</span><span><i className="status-dot status-paused" /> Paused</span><span><i className="status-dot status-closed" /> Closed</span></div>
-        <div className="legend-group"><strong>Courier status</strong><span><i className="status-dot status-idle" /> Idle</span><span><i className="status-dot status-assigned" /> Assigned</span><span><i className="status-dot status-carrying" /> Carrying</span></div>
-      </div>
+      <section className="operator-reassignment" aria-labelledby="operator-reassignment-heading">
+        <h2 id="operator-reassignment-heading">Reassign stalled order</h2>
+        <p>Enter the order ID and the ID of the courier who should receive it.</p>
+        <form onSubmit={(event) => void handleReassignOrder(event)}>
+          <label>
+            Order ID
+            <input
+              type="number"
+              min="1"
+              step="1"
+              required
+              value={reassignmentOrderId}
+              onChange={event => setReassignmentOrderId(event.target.value)}
+            />
+          </label>
+          <label>
+            New courier ID
+            <input
+              type="number"
+              min="1"
+              step="1"
+              required
+              value={reassignmentCourierId}
+              onChange={event => setReassignmentCourierId(event.target.value)}
+            />
+          </label>
+          <label className="operator-handoff-confirmation">
+            <input
+              type="checkbox"
+              checked={confirmedHandoff}
+              onChange={event => setConfirmedHandoff(event.target.checked)}
+            />
+            Confirm physical handoff if the order was picked up
+          </label>
+          <button type="submit" disabled={reassignmentInProgress}>
+            {reassignmentInProgress ? 'Reassigning…' : 'Reassign order'}
+          </button>
+        </form>
+        {reassignmentFeedback && <p role="status">{reassignmentFeedback}</p>}
+        {reassignmentError && <p role="alert">{reassignmentError}</p>}
+      </section>
+      <section className="operator-restaurants" aria-labelledby="operator-restaurants-heading">
+        <h2 id="operator-restaurants-heading">Restaurants</h2>
+        {restaurantStatusFeedback && <p role="status">{restaurantStatusFeedback}</p>}
+        {restaurantStatusError && <p role="alert">{restaurantStatusError}</p>}
+        {!data
+          ? <p>Loading restaurants…</p>
+          : data.restaurants.length === 0
+            ? <p>No restaurants found.</p>
+            : <ul>
+                {data.restaurants.map(restaurant => (
+                  <li key={restaurant.restaurantId}>
+                    <span>
+                      <strong>{restaurant.restaurantName}</strong>
+                      {' · '}
+                      <span className={`restaurant-status status-${statusClass(restaurant.status)}`}>
+                        {restaurant.status}
+                      </span>
+                    </span>
+                    {restaurant.status === 'open' && (
+                      <button
+                        type="button"
+                        disabled={updatingRestaurantId === restaurant.restaurantId}
+                        onClick={() => void handleRestaurantStatusChange(
+                          restaurant.restaurantId,
+                          'paused'
+                        )}
+                      >
+                        {updatingRestaurantId === restaurant.restaurantId ? 'Updating…' : 'Pause'}
+                      </button>
+                    )}
+                    {restaurant.status === 'paused' && (
+                      <button
+                        type="button"
+                        disabled={updatingRestaurantId === restaurant.restaurantId}
+                        onClick={() => void handleRestaurantStatusChange(
+                          restaurant.restaurantId,
+                          'open'
+                        )}
+                      >
+                        {updatingRestaurantId === restaurant.restaurantId ? 'Updating…' : 'Reopen'}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>}
+      </section>
+      <section className="operator-ledger" aria-labelledby="operator-ledger-heading">
+        <h2 id="operator-ledger-heading">Ledger History</h2>
+        {refundFeedback && <p role="status">{refundFeedback}</p>}
+        {refundError && <p role="alert">{refundError}</p>}
+        {ledgerError && <p role="alert">{ledgerError}</p>}
+        {!ledgerError && ledgerEntries.length === 0 && <p>No ledger entries found.</p>}
+        {ledgerEntries.length > 0 && (
+          <div className="operator-ledger-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Entry</th>
+                  <th>Status</th>
+                  <th>Amount</th>
+                  <th>Subtotal</th>
+                  <th>Total</th>
+                  <th>Customer</th>
+                  <th>Restaurant</th>
+                  <th>Courier</th>
+                  <th>Delivered</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledgerEntries.map(entry => {
+                  const hasRefund = ledgerEntries.some(
+                    candidate => candidate.orderId === entry.orderId && candidate.entryType === 'refund'
+                  );
+                  const isRefundEligible = entry.entryType === 'charge'
+                    && entry.orderStatus === 'delivered'
+                    && !hasRefund;
+                  return (
+                    <tr key={entry.ledgerEntryId}>
+                      <td>#{entry.orderId}</td>
+                      <td>{entry.entryType}</td>
+                      <td>{entry.orderStatus}</td>
+                      <td>${entry.amount.toFixed(2)}</td>
+                      <td>${entry.subtotal.toFixed(2)}</td>
+                      <td>${entry.total.toFixed(2)}</td>
+                      <td>{entry.customerId}</td>
+                      <td>{entry.restaurantId}</td>
+                      <td>{entry.courierId ?? '—'}</td>
+                      <td>{new Date(entry.deliveredAt).toLocaleString()}</td>
+                      <td>
+                        {isRefundEligible && (
+                          <button
+                            type="button"
+                            disabled={refundingOrderId === entry.orderId}
+                            onClick={() => void handleRefundOrder(entry.orderId)}
+                          >
+                            {refundingOrderId === entry.orderId ? 'Refunding…' : 'Refund'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <section className="operator-orders" aria-labelledby="operator-orders-heading">
+        <h2 id="operator-orders-heading">All Orders</h2>
+        {ordersError && <p role="alert">{ordersError}</p>}
+        {!ordersError && orders.length === 0 && <p>No orders found.</p>}
+        {orders.length > 0 && (
+          <div className="operator-orders-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Status</th>
+                  <th>Customer</th>
+                  <th>Restaurant</th>
+                  <th>Courier</th>
+                  <th>Items</th>
+                  <th>Created</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map(order => (
+                  <tr key={order.orderId}>
+                    <td>#{order.orderId}</td>
+                    <td>{order.status}</td>
+                    <td>{order.customerName ?? `#${order.customerId}`}</td>
+                    <td>{order.restaurantName ?? `#${order.restaurantId}`}</td>
+                    <td>{order.courierName
+                      ? `${order.courierName} (#${order.courierId})`
+                      : order.courierId == null ? '—' : `#${order.courierId}`}</td>
+                    <td>{order.items.map(item => `${item.quantity} × ${item.itemName}`).join(', ')}</td>
+                    <td>{new Date(order.createdAt).toLocaleString()}</td>
+                    <td>{new Date(order.updatedAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      {error
+        ? <p role="alert">{error}</p>
+        : !data
+          ? <p>Loading city map…</p>
+          : <>
+              <div className="operator-map-shell">
+                <div ref={mapElement} className="operator-map" role="application" aria-label="Interactive map of restaurants and on-duty couriers" />
+              </div>
+              <div className="map-legend" aria-label="Map legend">
+                <div className="legend-group"><strong>Map markers</strong><span><i className="legend-restaurant">R</i> Restaurant</span><span><i className="legend-courier">C</i> Courier</span></div>
+                <div className="legend-group"><strong>Preparation queue</strong><span><i className="queue-key queue-short" /> Short: 0–2</span><span><i className="queue-key queue-building" /> Building: 3–5</span><span><i className="queue-key queue-long" /> Long: 6+ or paused</span></div>
+                <div className="legend-group"><strong>Restaurant status</strong><span><i className="status-dot status-open" /> Open</span><span><i className="status-dot status-paused" /> Paused</span><span><i className="status-dot status-closed" /> Closed</span></div>
+                <div className="legend-group"><strong>Courier status</strong><span><i className="status-dot status-idle" /> Idle</span><span><i className="status-dot status-assigned" /> Assigned</span><span><i className="status-dot status-carrying" /> Carrying</span></div>
+              </div>
+            </>}
     </section>
   );
 }

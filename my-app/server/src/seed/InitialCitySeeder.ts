@@ -1,6 +1,9 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
-import { loadInitialCityConfiguration } from '../application/ORD/InitialCityConfiguration.js';
+import {
+  loadInitialCityConfiguration,
+  type InitialCityConfiguration,
+} from '../application/ORD/InitialCityConfiguration.js';
 
 async function synchronizeRestaurantData(
   client: PoolClient,
@@ -102,13 +105,20 @@ async function synchronizeRestaurantData(
 }
 
 export class InitialCitySeeder {
+  public static async synchronize(
+    client: PoolClient,
+    configuration: InitialCityConfiguration
+  ): Promise<void> {
+    await synchronizeRestaurantData(client, configuration.restaurants);
+  }
+
   public static async seed(): Promise<void> {
     const configuration = await loadInitialCityConfiguration();
     const client = await pool.connect();
 
     try {
       await client.query('BEGIN');
-      await synchronizeRestaurantData(client, configuration.restaurants);
+      await this.synchronize(client, configuration);
       await client.query('COMMIT');
       console.log('[InitialCitySeeder] Initial city restaurants and menus synchronized.');
     } catch (error) {

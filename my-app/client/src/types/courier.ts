@@ -23,6 +23,8 @@ export interface CurrentCourier {
   status: CourierStatus;
   currentOrderId: string | null;
   currentOrderStatus: CourierOrderStatus | null;
+  currentOfferId: string | null;
+  currentOfferStatus: CourierOrderStatus | null;
 }
 
 export interface CourierActionResult {

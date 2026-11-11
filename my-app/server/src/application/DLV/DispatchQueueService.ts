@@ -17,11 +17,17 @@ interface AvailableCourier {
   longitude: number;
 }
 
+interface PendingOffer {
+  courierId: string;
+  courierStatus: string;
+  hasActiveAssignment: boolean;
+}
+
 export class DispatchQueueService {
   constructor(private readonly db: Pool) {}
 
   async retryPendingOrders(): Promise<{
-    assigned: number;
+    offered: number;
     waiting: number;
   }> {
     const client = await this.db.connect();
@@ -92,7 +98,7 @@ export class DispatchQueueService {
         [queueId]
       );
 
-      let assigned = 0;
+      let offered = 0;
 
       for (const entry of entries.rows) {
         
@@ -115,7 +121,6 @@ export class DispatchQueueService {
           [entry.order_id]
         );
 
-        // Close stale entries without reassigning.
         if (
           order.rows[0]?.orderStatus !== 'ready' ||
           activeAssignment.rowCount !== 0
@@ -130,6 +135,47 @@ export class DispatchQueueService {
           continue;
         }
 
+        const existingOffer = await client.query<PendingOffer>(
+          `SELECT
+             d."assignedCourier"::text AS "courierId",
+             c."courierStatus",
+             EXISTS (
+               SELECT 1
+               FROM public.courier_assignments active
+               WHERE active.courier_id = d."assignedCourier"
+                 AND active.unassigned_at IS NULL
+             ) AS "hasActiveAssignment"
+           FROM public.ready_order_details d
+           JOIN public."Courier" c
+             ON c."accountID" = d."assignedCourier"
+           WHERE d.order_id = $1
+             AND d."assignedCourier" IS NOT NULL
+             AND d.pickup_time IS NULL
+             AND d.delivery_time IS NULL
+           FOR UPDATE OF d`,
+          [entry.order_id]
+        );
+
+        const offer = existingOffer.rows[0];
+        if (offer) {
+          if (
+            offer.courierStatus === 'idle' &&
+            !offer.hasActiveAssignment
+          ) {
+            continue;
+          }
+
+          await client.query(
+            `UPDATE public.ready_order_details
+             SET "assignedCourier" = NULL
+             WHERE order_id = $1
+               AND "assignedCourier" = $2
+               AND pickup_time IS NULL
+               AND delivery_time IS NULL`,
+            [entry.order_id, offer.courierId]
+          );
+        }
+
         const idle = await client.query<{
           accountID: string;
           courierPosition: string;
@@ -142,7 +188,29 @@ export class DispatchQueueService {
                FROM public.courier_assignments ca
                WHERE ca.courier_id = c."accountID"
                  AND ca.unassigned_at IS NULL
-             )`
+               )
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM public.ready_order_details offer
+                 JOIN public.orders offered_order
+                   ON offered_order.order_id = offer.order_id
+                 JOIN public.queue_entries offered_queue
+                   ON offered_queue.order_id = offered_order.order_id
+                 JOIN public.queues offered_queue_type
+                   ON offered_queue_type.queue_id = offered_queue.queue_id
+                 WHERE offer."assignedCourier" = c."accountID"
+                   AND offer.pickup_time IS NULL
+                   AND offer.delivery_time IS NULL
+                   AND offered_order."orderStatus" = 'ready'
+                   AND offered_queue_type.name = 'dispatch'
+                   AND offered_queue.exited_at IS NULL
+                   AND NOT EXISTS (
+                     SELECT 1
+                     FROM public.courier_assignments offered_assignment
+                     WHERE offered_assignment.order_id = offered_order.order_id
+                       AND offered_assignment.unassigned_at IS NULL
+                   )
+               )`
         );
 
         const couriers: AvailableCourier[] =
@@ -181,23 +249,40 @@ export class DispatchQueueService {
           [nearest.id]
         );
 
+        const courierHasOffer = await client.query(
+          `SELECT 1
+           FROM public.ready_order_details offer
+           JOIN public.orders offered_order
+             ON offered_order.order_id = offer.order_id
+           JOIN public.queue_entries offered_queue
+             ON offered_queue.order_id = offered_order.order_id
+           JOIN public.queues offered_queue_type
+             ON offered_queue_type.queue_id = offered_queue.queue_id
+           WHERE offer."assignedCourier" = $1
+             AND offer.pickup_time IS NULL
+             AND offer.delivery_time IS NULL
+             AND offered_order."orderStatus" = 'ready'
+             AND offered_queue_type.name = 'dispatch'
+             AND offered_queue.exited_at IS NULL
+             AND NOT EXISTS (
+               SELECT 1
+               FROM public.courier_assignments offered_assignment
+               WHERE offered_assignment.order_id = offered_order.order_id
+                 AND offered_assignment.unassigned_at IS NULL
+             )
+           LIMIT 1`,
+          [nearest.id]
+        );
+
         if (
           courierLock.rows[0]?.courierStatus !== 'idle' ||
-          courierBusy.rowCount !== 0
+          courierBusy.rowCount !== 0 ||
+          courierHasOffer.rowCount !== 0
         ) {
           // A concurrent courier action changed eligibility.
           // Keep the order queued for a future retry.
           break;
         }
-
-        // Record the assignment and courier state
-        // together, in this same transaction.
-        await client.query(
-          `INSERT INTO public.courier_assignments
-             (order_id, courier_id)
-           VALUES ($1, $2)`,
-          [entry.order_id, nearest.id]
-        );
 
         const details = await client.query(
           `INSERT INTO public.ready_order_details
@@ -208,6 +293,8 @@ export class DispatchQueueService {
              "assignedCourier" =
                EXCLUDED."assignedCourier"
            WHERE
+             public.ready_order_details."assignedCourier" IS NULL
+             AND
              public.ready_order_details.pickup_time IS NULL
              AND
              public.ready_order_details.delivery_time IS NULL`,
@@ -220,43 +307,8 @@ export class DispatchQueueService {
           );
         }
 
-        const courierUpdate = await client.query(
-          `UPDATE public."Courier"
-           SET "courierStatus" = 'assigned'
-           WHERE "accountID" = $1
-             AND "courierStatus" = 'idle'`,
-          [nearest.id]
-        );
-
-        if (courierUpdate.rowCount !== 1) {
-          throw new Error(
-            'Failed to assign available courier.'
-          );
-        }
-
-        const queueUpdate = await client.query(
-          `UPDATE public.queue_entries
-           SET exited_at = now(),
-               readiness_status = 'ready'
-           WHERE queue_entry_id = $1
-             AND exited_at IS NULL`,
-          [entry.queue_entry_id]
-        );
-
-        if (queueUpdate.rowCount !== 1) {
-          throw new Error(
-            'Failed to close dispatch queue entry.'
-          );
-        }
-
-        await client.query(
-          `INSERT INTO public.order_events
-             (order_id, event_type)
-           VALUES ($1, 'courier_assigned')`,
-          [entry.order_id]
-        );
-
-        assigned++;
+        offered++;
+        // The courier and queue entry remain available until the courier accepts.
       }
 
       const waitingResult = await client.query<{
@@ -265,14 +317,25 @@ export class DispatchQueueService {
         `SELECT COUNT(*)::text AS count
          FROM public.queue_entries
          WHERE queue_id = $1
-           AND exited_at IS NULL`,
+           AND exited_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM public.ready_order_details offer
+             JOIN public.orders offered_order
+               ON offered_order.order_id = offer.order_id
+             WHERE offer.order_id = public.queue_entries.order_id
+               AND offer."assignedCourier" IS NOT NULL
+               AND offer.pickup_time IS NULL
+               AND offer.delivery_time IS NULL
+               AND offered_order."orderStatus" = 'ready'
+           )`,
         [queueId]
       );
 
       await client.query('COMMIT');
 
       return {
-        assigned,
+        offered,
         waiting: Number(waitingResult.rows[0].count)
       };
     } catch (error) {

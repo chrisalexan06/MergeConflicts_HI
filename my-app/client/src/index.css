@@ -122,6 +122,69 @@ tr:hover td { background: #f8fffe; }
     flex-direction: column;
     flex-wrap: wrap; }
 
+.courier-duty-actions {
+  margin-bottom: 12px;
+}
+
+.menu-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+.menu-item-actions-cell {
+  min-width: 175px;
+  white-space: nowrap;
+}
+.menu-item-availability-btn {
+  padding: 7px 10px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.menu-item-edit-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+.btn.menu-item-edit-btn {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+}
+.menu-item-edit-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.menu-item-edit-tooltip {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #333;
+  color: white;
+  font-size: 0.8rem;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 3px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  visibility: hidden;
+}
+.menu-item-edit-wrapper:hover .menu-item-edit-tooltip,
+.menu-item-edit-wrapper:focus-within .menu-item-edit-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
 .navbar {
   display: flex;
   gap: 16px;
@@ -230,6 +293,7 @@ tr:hover td { background: #f8fffe; }
 .badge-delivered { background: #d1dafa; color: #041578; }
 .badge-cancelled,
 .badge-rejected  { background: var(--error-bg); color: var(--error-text); }
+.badge-refunded  { background: #e8def8; color: #5b3b87; }
 
 .navbar-user {
   margin-left: auto; 
