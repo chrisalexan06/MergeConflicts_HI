@@ -11,8 +11,8 @@
       "restaurantId": 1,
       "restaurantName": "Sugar Dash Patisserie",
       "status": "open",
-      "latitude": 45.5017,
-      "longitude": -73.5673,
+      "latitude": 45.5015,
+      "longitude": -73.5650,
       "menu": {
         "items": [
           {

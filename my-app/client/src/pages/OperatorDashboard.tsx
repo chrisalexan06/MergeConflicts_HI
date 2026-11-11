@@ -235,15 +235,16 @@ export default function OperatorDashboard({ token }: { token: string }) {
       const letter = kind === 'restaurant' ? 'R' : 'C';
       const icon = L.divIcon({
         className: 'location-marker-icon',
-        html: `<span class="location-marker ${kind}-marker${preparationQueueLevel ? ` queue-${preparationQueueLevel}` : ''}"><span class="marker-letter">${letter}</span><i class="status-dot status-${statusClass(status)}"></i></span>`,
+        html: `<span class="location-marker ${kind}-marker${preparationQueueLevel ? ` queue-${preparationQueueLevel}` : ''}" title="${escapeHtml(name)}"><span class="marker-letter">${letter}</span><i class="status-dot status-${statusClass(status)}"></i></span>`,
         iconSize: [36, 36],
         iconAnchor: [18, 18]
       });
       const queueDetail = preparationQueueLevel
         ? `<br>Preparation queue: <strong>${preparationQueueLevel}</strong> (${preparationQueueCount} queued)`
         : '';
-      L.marker(point, { icon })
+      L.marker(point, { icon, zIndexOffset: kind === 'restaurant' ? 1000 : 0 })
         .bindTooltip(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(status)}${queueDetail}`, { direction: 'top', offset: [0, -16] })
+        .bindPopup(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(status)}${queueDetail}`)
         .addTo(map);
     };
 
