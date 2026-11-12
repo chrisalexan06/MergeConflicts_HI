@@ -49,7 +49,9 @@ function escapeHtml(value: string): string {
 
 export default function OperatorDashboard({ token }: { token: string }) {
   const [data, setData] = useState<DashboardMapData | null>(null);
+  const [mapLoading, setMapLoading] = useState(true);
   const [error, setError] = useState('');
+  const [mapTileError, setMapTileError] = useState('');
   const [resetFeedback, setResetFeedback] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetInProgress, setResetInProgress] = useState(false);
@@ -74,6 +76,8 @@ export default function OperatorDashboard({ token }: { token: string }) {
 
   useEffect(() => {
     let active = true;
+    let loadingTimer: number | undefined;
+    const loadingStartedAt = Date.now();
     fetch('http://localhost:3000/api/operator/delivery/map-data', {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -93,10 +97,22 @@ export default function OperatorDashboard({ token }: { token: string }) {
         if (active) {
           setError('');
           setData(value);
+          const remainingVisibleTime = Math.max(0, 700 - (Date.now() - loadingStartedAt));
+          loadingTimer = window.setTimeout(() => {
+            if (active) setMapLoading(false);
+          }, remainingVisibleTime);
         }
       })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Could not load map data.'); });
-    return () => { active = false; };
+      .catch(reason => {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : 'Could not load map data.');
+          setMapLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+      if (loadingTimer !== undefined) window.clearTimeout(loadingTimer);
+    };
   }, [token, refreshVersion]);
 
   useEffect(() => {
@@ -144,6 +160,9 @@ export default function OperatorDashboard({ token }: { token: string }) {
     try {
       await restoreInitialState(token);
       setResetFeedback('Initial state restored successfully.');
+      setMapLoading(true);
+      setError('');
+      setMapTileError('');
       setRefreshVersion(version => version + 1);
     } catch (reason) {
       setResetError(reason instanceof Error ? reason.message : 'Could not restore the initial state.');
@@ -162,6 +181,9 @@ export default function OperatorDashboard({ token }: { token: string }) {
     try {
       await updateOperatorRestaurantStatus(token, restaurantId, status);
       setRestaurantStatusFeedback(`Restaurant status updated to ${status}.`);
+      setMapLoading(true);
+      setError('');
+      setMapTileError('');
       setRefreshVersion(version => version + 1);
     } catch (reason) {
       setRestaurantStatusError(
@@ -194,6 +216,9 @@ export default function OperatorDashboard({ token }: { token: string }) {
         confirmedHandoff
       );
       setReassignmentFeedback(result.message);
+      setMapLoading(true);
+      setError('');
+      setMapTileError('');
       setRefreshVersion(version => version + 1);
     } catch (reason) {
       setReassignmentError(
@@ -211,6 +236,9 @@ export default function OperatorDashboard({ token }: { token: string }) {
     try {
       await refundOperatorOrder(token, orderId);
       setRefundFeedback(`Order ${orderId} refunded successfully.`);
+      setMapLoading(true);
+      setError('');
+      setMapTileError('');
       setRefreshVersion(version => version + 1);
     } catch (reason) {
       setRefundError(reason instanceof Error ? reason.message : 'Could not refund the order.');
@@ -219,14 +247,25 @@ export default function OperatorDashboard({ token }: { token: string }) {
     }
   }
 
+  function handleMapRefresh(): void {
+    setError('');
+    setMapTileError('');
+    setMapLoading(true);
+    setRefreshVersion(version => version + 1);
+  }
+
   useEffect(() => {
-    if (!data || !mapElement.current) return;
+    if (mapLoading || !data || !mapElement.current || (data.restaurants.length === 0 && data.couriers.length === 0)) return;
 
     const map = L.map(mapElement.current, { zoomControl: true, scrollWheelZoom: true });
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
-    }).addTo(map);
+    });
+    tileLayer.on('tileerror', () => {
+      setMapTileError('Map tiles could not be loaded. Check your connection and retry the map.');
+    });
+    tileLayer.addTo(map);
 
     const locations: L.LatLngExpression[] = [];
     const addMarker = (latitude: number, longitude: number, kind: 'restaurant' | 'courier', name: string, status: string, preparationQueueCount?: number, preparationQueueLevel?: 'long' | 'building' | 'short') => {
@@ -235,15 +274,16 @@ export default function OperatorDashboard({ token }: { token: string }) {
       const letter = kind === 'restaurant' ? 'R' : 'C';
       const icon = L.divIcon({
         className: 'location-marker-icon',
-        html: `<span class="location-marker ${kind}-marker${preparationQueueLevel ? ` queue-${preparationQueueLevel}` : ''}"><span class="marker-letter">${letter}</span><i class="status-dot status-${statusClass(status)}"></i></span>`,
+        html: `<span class="location-marker ${kind}-marker${preparationQueueLevel ? ` queue-${preparationQueueLevel}` : ''}" title="${escapeHtml(name)}"><span class="marker-letter">${letter}</span><i class="status-dot status-${statusClass(status)}"></i></span>`,
         iconSize: [36, 36],
         iconAnchor: [18, 18]
       });
       const queueDetail = preparationQueueLevel
         ? `<br>Preparation queue: <strong>${preparationQueueLevel}</strong> (${preparationQueueCount} queued)`
         : '';
-      L.marker(point, { icon })
+      L.marker(point, { icon, zIndexOffset: kind === 'restaurant' ? 1000 : 0 })
         .bindTooltip(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(status)}${queueDetail}`, { direction: 'top', offset: [0, -16] })
+        .bindPopup(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(status)}${queueDetail}`)
         .addTo(map);
     };
 
@@ -255,7 +295,7 @@ export default function OperatorDashboard({ token }: { token: string }) {
     else map.setView([45.5017, -73.5673], 12);
 
     return () => { map.remove(); };
-  }, [data]);
+  }, [data, mapLoading]);
 
   return (
     <section className="operator-dashboard">
@@ -459,14 +499,32 @@ export default function OperatorDashboard({ token }: { token: string }) {
           </div>
         )}
       </section>
+      <div className="operator-map-toolbar">
+        <h2>City map</h2>
+        <button type="button" onClick={handleMapRefresh} disabled={mapLoading}>Refresh map</button>
+      </div>
       {error
-        ? <p role="alert">{error}</p>
-        : !data
-          ? <p>Loading city map…</p>
-          : <>
+        ? <div className="operator-map-shell"><p className="operator-map-error" role="alert">{error}</p></div>
+        : mapLoading
+          ? <div className="operator-map-shell"><div className="operator-map-loading" role="status"><span className="operator-loading-spinner" aria-hidden="true" />Loading map data…</div></div>
+          : !data
+            ? null
+            : <>
               <div className="operator-map-shell">
-                <div ref={mapElement} className="operator-map" role="application" aria-label="Interactive map of restaurants and on-duty couriers" />
+                {data.restaurants.length === 0 && data.couriers.length === 0
+                  ? <div className="operator-map-empty" role="status">
+                      <span className="operator-map-empty-icon" aria-hidden="true">⌖</span>
+                      <strong>No locations to display</strong>
+                      <span>There are no restaurants or on-duty couriers in the current dataset.</span>
+                    </div>
+                  : <div ref={mapElement} className="operator-map" role="application" aria-label="Interactive map of restaurants and on-duty couriers" />}
               </div>
+              {mapTileError && (
+                <p className="operator-map-tile-error" role="alert">
+                  {mapTileError}{' '}
+                  <button type="button" onClick={handleMapRefresh}>Retry map</button>
+                </p>
+              )}
               <div className="map-legend" aria-label="Map legend">
                 <div className="legend-group"><strong>Map markers</strong><span><i className="legend-restaurant">R</i> Restaurant</span><span><i className="legend-courier">C</i> Courier</span></div>
                 <div className="legend-group"><strong>Preparation queue</strong><span><i className="queue-key queue-short" /> Short: 0–2</span><span><i className="queue-key queue-building" /> Building: 3–5</span><span><i className="queue-key queue-long" /> Long: 6+ or paused</span></div>

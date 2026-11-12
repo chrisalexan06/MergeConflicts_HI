@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { cancelOrder, getCustomerOrder, listCustomerOrders, placeOrder } from '../api/orders';
 import { getCustomerProfile, saveCustomerProfile, type CustomerProfile } from '../api/customerProfile';
+import { readJsonResponse } from '../api/readJsonResponse';
 import { CustomerCurrentOrders } from '../ui/CustomerCurrentOrders';
 import type { Order } from '../types/order';
 
@@ -93,11 +94,16 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
           signal: controller.signal,
         });
 
+        const body = await readJsonResponse(response, 'Restaurant API');
         if (!response.ok) {
-          throw new Error(`Restaurant API returned HTTP ${response.status}.`);
+          const message = typeof body === 'object' && body !== null
+            && 'error' in body && typeof body.error === 'string'
+            ? body.error
+            : `Restaurant API returned HTTP ${response.status}.`;
+          throw new Error(message);
         }
-
-        const data: Restaurant[] = await response.json();
+        if (!Array.isArray(body)) throw new Error('Restaurant API returned an invalid response.');
+        const data = body as Restaurant[];
         setRestaurants(data);
         setSelectedRestaurantId(data[0]?.restaurantId ?? null);
       } catch (requestError) {
@@ -119,7 +125,10 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
     let active = true;
     void listCustomerOrders(token)
       .then((customerOrders) => {
-        if (active) setOrders(customerOrders);
+        if (active) {
+          setOrders(customerOrders);
+          setOrdersError(null);
+        }
       })
       .catch((requestError: unknown) => {
         if (active) {
@@ -171,14 +180,21 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
       }));
 
     try {
-        if (selectedRestaurantId === null) {
-          setOrderResult('Select a restaurant before placing an order.');
-          return;
-        }
+      if (selectedRestaurantId === null) {
+        setOrderResult('Select a restaurant before placing an order.');
+        return;
+      }
 
-        const order = await placeOrder(token, { restaurantId: selectedRestaurantId, orderLines });
-        setOrderResult(`Order placed successfully. Order ID: ${order.orderId}`);
+      const order = await placeOrder(token, { restaurantId: selectedRestaurantId, orderLines });
+      setOrderResult(`Order placed successfully. Order ID: ${order.orderId}`);
+      try {
         setOrders(await listCustomerOrders(token));
+        setOrdersError(null);
+      } catch (refreshError) {
+        setOrdersError(
+          `Order ${order.orderId} was placed, but the order list could not refresh: ${refreshError instanceof Error ? refreshError.message : 'Unable to reload orders.'}`
+        );
+      }
     } catch (requestError) {
       setOrderResult(
         `Request failed: ${requestError instanceof Error ? requestError.message : 'Unable to place order.'}`
@@ -216,7 +232,15 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
   async function handleCancelOrder(orderId: number) {
     const updatedOrder = await cancelOrder(token, orderId);
     setTrackedOrder((current) => current?.orderId === orderId ? updatedOrder : current);
-    setOrders(await listCustomerOrders(token));
+    setOrders((current) => current.map((order) => order.orderId === orderId ? updatedOrder : order));
+    try {
+      setOrders(await listCustomerOrders(token));
+      setOrdersError(null);
+    } catch (refreshError) {
+      setOrdersError(
+        `Order ${orderId} was canceled, but the order list could not refresh: ${refreshError instanceof Error ? refreshError.message : 'Unable to reload orders.'}`
+      );
+    }
   }
 
   async function handleTrackOrder(orderId: number) {
@@ -457,7 +481,8 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
             )}
             {orderResult && (
               <div
-                role="status"
+                role={orderResult.startsWith('Order placed successfully') ? 'status' : 'alert'}
+                aria-live={orderResult.startsWith('Order placed successfully') ? 'polite' : 'assertive'}
                 className={`alert ${orderResult.startsWith('Order placed') ? 'alert-success' : 'alert-error'}`}
               >
                 {orderResult}
