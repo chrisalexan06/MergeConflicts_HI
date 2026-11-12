@@ -1,3 +1,5 @@
+import { readJsonResponse } from './readJsonResponse';
+
 const CUSTOMER_PROFILE_URL = "http://localhost:3000/api/auth/customer-address";
 
 export interface CustomerProfile {
@@ -19,7 +21,7 @@ async function requestCustomerProfile(token: string, init?: RequestInit): Promis
       ...init?.headers,
     },
   });
-  const body: unknown = await response.json();
+  const body = await readJsonResponse(response, 'Customer profile request');
 
   if (!response.ok) {
     const message = typeof body === "object" && body !== null && "error" in body

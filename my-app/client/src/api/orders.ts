@@ -1,4 +1,5 @@
 import type { Order, PlaceOrderRequest } from "../types/order";
+import { readJsonResponse } from './readJsonResponse';
 
 const ORDERS_URL = "http://localhost:3000/api/orders";
 
@@ -11,7 +12,7 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
       ...init?.headers,
     },
   });
-  const body: unknown = await response.json();
+  const body = await readJsonResponse(response, 'Order request');
   if (!response.ok) {
     const message = typeof body === "object" && body !== null && "error" in body
       && typeof body.error === "string"

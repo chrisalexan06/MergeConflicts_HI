@@ -95,7 +95,7 @@ export function CustomerCurrentOrders({ orders, onTrackOrder, onCancelOrder }: C
         </div>
       )}
 
-      {message && <div role="status" aria-live="polite" className="alert alert-error">{message}</div>}
+      {message && <div role="alert" aria-live="assertive" className="alert alert-error">{message}</div>}
     </section>
   );
 }
