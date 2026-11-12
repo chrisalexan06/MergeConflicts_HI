@@ -1,0 +1,22 @@
+services:
+  server:
+    build:
+      context: ./my-app/server
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: "postgresql://postgres.nvwgvkaqynjfantdvtss:SugarDash45!@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+      PORT: "3000"
+      CLIENT_URL: "http://localhost:5173/"
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./my-app/client
+      dockerfile: Dockerfile
+    depends_on:
+      - server
+    ports:
+      - "8080:80"
+    restart: unless-stopped

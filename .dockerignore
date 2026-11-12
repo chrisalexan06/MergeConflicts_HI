@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+node_modules-backup
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+proj_info
