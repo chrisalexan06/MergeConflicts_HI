@@ -76,3 +76,18 @@
   .map-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem .5rem; font-size: .72rem; }
   .legend-group { padding-right: 0; }
 }
+.operator-map-empty { display: flex; min-height: 240px; align-items: center; justify-content: center; gap: .75rem; border: 1px solid #dce2ec; border-radius: 18px; background: #f8fafc; color: #64708a; }
+.operator-map-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem 0 .6rem; }
+.operator-map-toolbar h2 { margin: 0; font-size: 1.1rem; }
+.operator-map-toolbar button { border: 1px solid #c8664e; border-radius: 7px; padding: .45rem .75rem; background: white; color: #9b4937; font: inherit; font-weight: 700; cursor: pointer; }
+.operator-map-toolbar button:disabled { cursor: wait; opacity: .6; }
+.operator-map-loading { display: flex; width: 100%; height: 100%; min-height: inherit; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; background: #f8fafc; color: #64708a; }
+.operator-map-error { margin: 0; padding: 1.5rem; color: #a83232; }
+.operator-loading-spinner { width: 50px; height: 50px; flex: 0 0 auto; border: 4px solid #f3d8e9; border-top-color: #d946a6; border-radius: 50%; animation: operator-spin 1.5s linear infinite; will-change: transform; }
+.operator-map-empty { flex-direction: column; padding: 2rem; text-align: center; }
+.operator-map-empty strong { color: #263044; }
+.operator-map-empty-icon { color: #c8664e; font-size: 2rem; line-height: 1; }
+@keyframes operator-spin { to { transform: rotate(360deg); } }
+@media (max-width: 640px) {
+  .operator-map-empty { min-height: 300px; }
+}
