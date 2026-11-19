@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { loadInitialCityConfiguration } from '../ORD/InitialCityConfiguration.js';
 import { SeedAccountLoader } from '../REG/SeedAccountLoader.js';
-import { InitialCitySeeder } from '../../seed/InitialCitySeeder.js';
+import { InitialCitySeeder } from '../ORD/InitialCitySeeder.js';
 
 const resetTables = [
   'public."Account"',

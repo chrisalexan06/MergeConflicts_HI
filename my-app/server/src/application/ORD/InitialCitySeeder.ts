@@ -1,9 +1,9 @@
 import type { PoolClient } from 'pg';
-import { pool } from '../db.js';
+import { pool } from '../../db.js';
 import {
   loadInitialCityConfiguration,
   type InitialCityConfiguration,
-} from '../application/ORD/InitialCityConfiguration.js';
+} from '../../application/ORD/InitialCityConfiguration.js';
 
 async function synchronizeRestaurantData(
   client: PoolClient,

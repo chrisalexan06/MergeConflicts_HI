@@ -3,7 +3,7 @@ import authRoutes from './routes/authRoutes.js';
 import orderRoutes from './routes/orders.js';
 import restaurantRoutes from './routes/restaurantRoutes.js';
 import { SeedAccountLoader } from './application/REG/SeedAccountLoader.js';
-import { InitialCitySeeder } from './seed/InitialCitySeeder.js';
+import { InitialCitySeeder } from './application/ORD/InitialCitySeeder.js';
 import courierRoutes from './routes/couriers.js';
 import operatorDeliveryRoutes from './routes/operatorDeliveryRoutes.js';
 import operatorResetRoutes from './routes/operatorResetRoutes.js';
