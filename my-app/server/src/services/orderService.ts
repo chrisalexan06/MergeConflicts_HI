@@ -100,7 +100,20 @@
 
 		async placeOrder(request: PlaceOrderRequest): Promise<Order> {
 			const customer = await this.requireCustomer();
-			const customerProfile = await this.dependencies.catalog.findCustomerProfile(customer.id);
+			await this.validateCustomerProfile(customer.id);
+			this.validatePlaceOrderRequest(request);
+			const restaurant = await this.getAcceptingRestaurant(request.restaurantId);
+			const orderLines = await this.buildOrderLines(request.lines, restaurant);
+
+			return this.dependencies.orders.create({
+				customerId: customer.id,
+				restaurantId: restaurant.id,
+				lines: orderLines,
+			});
+		}
+
+		private async validateCustomerProfile(customerId: string): Promise<void> {
+			const customerProfile = await this.dependencies.catalog.findCustomerProfile(customerId);
 			if (
 				!hasDeliveryAddress(customerProfile?.deliveryAddress)
 				|| !hasDeliveryCity(customerProfile?.city)
@@ -108,6 +121,9 @@
 			) {
 				throw new OrderServiceError("CONFLICT", "Complete and save your delivery address, city, and country before ordering.");
 			}
+		}
+
+		private validatePlaceOrderRequest(request: PlaceOrderRequest): void {
 			if (!request.restaurantId.trim() || request.lines.length === 0) {
 				throw new OrderServiceError("VALIDATION", "Choose a restaurant and at least one item.");
 			}
@@ -117,16 +133,24 @@
 					throw new OrderServiceError("VALIDATION", "Each item must have a positive whole-number quantity.");
 				}
 			}
+		}
 
-			const restaurant = await this.dependencies.catalog.findRestaurant(request.restaurantId);
+		private async getAcceptingRestaurant(restaurantId: string): Promise<Restaurant> {
+			const restaurant = await this.dependencies.catalog.findRestaurant(restaurantId);
 			if (!restaurant) {
 				throw new OrderServiceError("NOT_FOUND", "Restaurant was not found.");
 			}
 			if (!restaurant.isOpen) {
 				throw new OrderServiceError("CONFLICT", "Restaurant is not accepting orders.");
 			}
+			return restaurant;
+		}
 
-			const orderLines = await Promise.all(request.lines.map(async (requestedLine) => {
+		private async buildOrderLines(
+			requestedLines: PlaceOrderRequest["lines"],
+			restaurant: Restaurant,
+		): Promise<OrderLine[]> {
+			return Promise.all(requestedLines.map(async (requestedLine) => {
 				const item = await this.dependencies.catalog.findMenuItem(requestedLine.itemId);
 				if (item?.restaurantId !== restaurant.id) {
 					throw new OrderServiceError("NOT_FOUND", "An item was not found at this restaurant.");
@@ -136,12 +160,6 @@
 				}
 				return new OrderLine(item.id, item.name, item.unitPrice, requestedLine.quantity);
 			}));
-
-			return this.dependencies.orders.create({
-				customerId: customer.id,
-				restaurantId: restaurant.id,
-				lines: orderLines,
-			});
 		}
 
 		async cancelOrder(orderId: string): Promise<Order> {
