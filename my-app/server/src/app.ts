@@ -9,6 +9,7 @@ import operatorDeliveryRoutes from './routes/operatorDeliveryRoutes.js';
 import operatorResetRoutes from './routes/operatorResetRoutes.js';
 import operatorRestaurantRoutes from './routes/operatorRestaurantRoutes.js';
 import operatorOrderRoutes from './routes/operatorOrderRoutes.js';
+import ratingRoutes from './routes/ratings.js';
 import { DispatchQueueService } from './application/DLV/DispatchQueueService.js';
 import { pool } from './db.js';
 
@@ -36,6 +37,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/ratings', ratingRoutes);
 app.use('/api/order-summaries', (await import('./routes/orderSummaryRoutes.js')).default);
 app.use('/api/couriers', courierRoutes);
 app.use('/api/restaurants', restaurantRoutes);
