@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { cancelOrder, getCustomerOrder, listCustomerOrders, placeOrder } from '../api/orders';
 import { getCustomerProfile, saveCustomerProfile, type CustomerProfile } from '../api/customerProfile';
+import {
+  listMyRatings,
+  listRestaurantRatingSummaries,
+  submitOrderRating,
+  type CustomerOrderRating,
+  type RestaurantRatingSummary,
+} from '../api/ratings';
 import { readJsonResponse } from '../api/readJsonResponse';
 import { CustomerCurrentOrders } from '../ui/CustomerCurrentOrders';
 import type { Order } from '../types/order';
@@ -32,6 +39,10 @@ const emptyCustomerProfile: CustomerProfile = { deliveryAddress: '', city: '', c
 export default function CustomerOrders({ token }: CustomerOrdersProps) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [customerRatings, setCustomerRatings] = useState<Record<number, CustomerOrderRating>>({});
+  const [restaurantRatingSummaries, setRestaurantRatingSummaries] = useState<Record<number, RestaurantRatingSummary>>({});
+  const [ratingsError, setRatingsError] = useState<string | null>(null);
+  const [restaurantRatingsError, setRestaurantRatingsError] = useState<string | null>(null);
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(null);
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [trackingOrder, setTrackingOrder] = useState(false);
@@ -106,6 +117,21 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
         const data = body as Restaurant[];
         setRestaurants(data);
         setSelectedRestaurantId(data[0]?.restaurantId ?? null);
+        try {
+          const ratingSummaries = await listRestaurantRatingSummaries();
+          if (!controller.signal.aborted) {
+            setRestaurantRatingSummaries(Object.fromEntries(
+              ratingSummaries.map((summary) => [summary.restaurantId, summary])
+            ));
+            setRestaurantRatingsError(null);
+          }
+        } catch (ratingError) {
+          if (!controller.signal.aborted) {
+            setRestaurantRatingsError(
+              ratingError instanceof Error ? ratingError.message : 'Could not load restaurant ratings.'
+            );
+          }
+        }
       } catch (requestError) {
         if (!controller.signal.aborted) {
           setError(requestError instanceof Error ? requestError.message : 'Failed to load restaurant data.');
@@ -120,6 +146,46 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
     void loadRestaurants();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void listMyRatings(token)
+      .then((ratings) => {
+        if (active) {
+          setCustomerRatings(Object.fromEntries(
+            ratings.map((rating) => [rating.orderId, rating])
+          ));
+          setRatingsError(null);
+        }
+      })
+      .catch((requestError: unknown) => {
+        if (active) setRatingsError(requestError instanceof Error ? requestError.message : 'Could not load ratings.');
+      });
+    return () => { active = false; };
+  }, [token]);
+
+  async function handleSubmitRating(
+    orderId: number,
+    restaurantRating: number,
+    courierRating: number,
+  ): Promise<void> {
+    const savedRating = await submitOrderRating(token, orderId, restaurantRating, courierRating);
+    setCustomerRatings((current) => ({
+      ...current,
+      [savedRating.orderId]: savedRating,
+    }));
+    try {
+      const summaries = await listRestaurantRatingSummaries();
+      setRestaurantRatingSummaries(Object.fromEntries(
+        summaries.map((summary) => [summary.restaurantId, summary])
+      ));
+      setRestaurantRatingsError(null);
+    } catch (requestError) {
+      setRestaurantRatingsError(
+        requestError instanceof Error ? requestError.message : 'Could not refresh restaurant ratings.'
+      );
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -290,6 +356,12 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                       <h3>{restaurant.restaurantName}</h3>
                       <span className={`badge badge-${restaurant.status}`}>{restaurant.status}</span>
                     </div>
+                    {restaurantRatingSummaries[restaurant.restaurantId] ? (
+                      <p className="muted" aria-label={`Restaurant rating ${restaurantRatingSummaries[restaurant.restaurantId].averageRating} out of 5`}>
+                        ★ {restaurantRatingSummaries[restaurant.restaurantId].averageRating.toFixed(1)} / 5
+                        {' '}({restaurantRatingSummaries[restaurant.restaurantId].ratingCount} {restaurantRatingSummaries[restaurant.restaurantId].ratingCount === 1 ? 'rating' : 'ratings'})
+                      </p>
+                    ) : <p className="muted">Not rated yet</p>}
                     {restaurant.menu.items.length === 0 ? (
                       <p className="muted">No menu items.</p>
                     ) : (
@@ -540,10 +612,14 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
           <CustomerCurrentOrders
             orders={orders}
+            ratings={customerRatings}
             onTrackOrder={(orderId) => void handleTrackOrder(orderId)}
             onCancelOrder={handleCancelOrder}
+            onSubmitRating={handleSubmitRating}
           />
           {ordersError && <div role="alert" className="alert alert-error">Error loading orders: {ordersError}</div>}
+          {ratingsError && <div role="alert" className="alert alert-error">Error loading ratings: {ratingsError}</div>}
+          {restaurantRatingsError && <div role="alert" className="alert alert-error">Restaurant ratings unavailable: {restaurantRatingsError}</div>}
         </>
       )}
     </main>

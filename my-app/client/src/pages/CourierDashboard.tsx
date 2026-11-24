@@ -8,6 +8,7 @@ import {
   goOnDuty,
 } from '../api/courier';
 import { getOrderSummary } from '../api/orderSummaries';
+import { getMyCourierRatingSummary, type CourierRatingSummary } from '../api/ratings';
 import type { CurrentCourier } from '../types/courier';
 import './CourierDashboard.css';
 
@@ -17,21 +18,29 @@ interface CourierDashboardProps {
 
 export default function CourierDashboard({ token }: CourierDashboardProps) {
   const [courier, setCourier] = useState<CurrentCourier | null>(null);
+  const [ratingSummary, setRatingSummary] = useState<CourierRatingSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshCourier = useCallback(async () => {
-    const currentCourier = await getCurrentCourier(token);
+    const [currentCourier, currentRatingSummary] = await Promise.all([
+      getCurrentCourier(token),
+      getMyCourierRatingSummary(token),
+    ]);
     setCourier(currentCourier);
+    setRatingSummary(currentRatingSummary);
   }, [token]);
 
   useEffect(() => {
     let active = true;
 
-    void getCurrentCourier(token)
-      .then((currentCourier) => {
-        if (active) setCourier(currentCourier);
+    void Promise.all([getCurrentCourier(token), getMyCourierRatingSummary(token)])
+      .then(([currentCourier, currentRatingSummary]) => {
+        if (active) {
+          setCourier(currentCourier);
+          setRatingSummary(currentRatingSummary);
+        }
       })
       .catch((requestError: unknown) => {
         if (active) {
@@ -128,6 +137,19 @@ export default function CourierDashboard({ token }: CourierDashboardProps) {
               <strong className={`courier-summary-value courier-order-status courier-order-status--${courier.currentOrderStatus ?? 'none'}`}>
                 {courier.currentOrderStatus ?? '—'}
               </strong>
+            </article>
+            <article className="courier-summary-card">
+              <span className="courier-summary-label">Customer Rating</span>
+              <strong className="courier-summary-value">
+                {ratingSummary?.ratingCount
+                  ? `★ ${ratingSummary.averageRating?.toFixed(1)} / 5`
+                  : 'No ratings yet'}
+              </strong>
+              {Boolean(ratingSummary?.ratingCount) && (
+                <span className="courier-summary-label">
+                  {ratingSummary?.ratingCount} {ratingSummary?.ratingCount === 1 ? 'rating' : 'ratings'}
+                </span>
+              )}
             </article>
           </div>
           {courier.currentOfferId && (
