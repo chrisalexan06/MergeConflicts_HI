@@ -118,18 +118,7 @@ export class RestaurantService {
       return null;
     }
 
-    const restaurantId = parseId(row.restaurantID, 'restaurantID');
-    if (typeof row.restaurantName !== 'string' || typeof row.restaurantStatus !== 'string') {
-      throw new Error(`Invalid restaurant data returned for restaurant ${restaurantId}.`);
-    }
-
-    const menu = await this.menuService.getMenuForRestaurant(restaurantId);
-    return {
-      restaurantId,
-      restaurantName: row.restaurantName,
-      status: parseRestaurantStatus(row.restaurantStatus, restaurantId),
-      menuItems: menu.items,
-    };
+    return this.buildStaffRestaurantSummary(row);
   }
 
   public async updateMenuItemStatusForStaff(
@@ -204,12 +193,19 @@ export class RestaurantService {
       return null;
     }
 
+    return this.buildStaffRestaurantSummary(row);
+  }
+
+  private async buildStaffRestaurantSummary(
+    row: Record<string, unknown>
+  ): Promise<StaffRestaurantSummary> {
     const restaurantId = parseId(row.restaurantID, 'restaurantID');
     if (typeof row.restaurantName !== 'string' || typeof row.restaurantStatus !== 'string') {
       throw new Error(`Invalid restaurant data returned for restaurant ${restaurantId}.`);
     }
 
     const menu = await this.menuService.getMenuForRestaurant(restaurantId);
+    // Add the average rating here once it is calculated from stored rating data.
     return {
       restaurantId,
       restaurantName: row.restaurantName,
