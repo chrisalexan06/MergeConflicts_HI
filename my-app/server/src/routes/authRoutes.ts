@@ -147,6 +147,16 @@ router.get('/me', (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Unauthorized: No active session' });
   }
   const user = authService.getCurrentUser(token);
-  res.json({ user });
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized: No active session' });
+  }
+  res.json({
+    user: {
+      accountID: user.accountID,
+      accountName: user.accountName,
+      email: user.email,
+      role: user.role,
+    },
+  });
 });
 export default router;
