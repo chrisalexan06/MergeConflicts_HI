@@ -13,11 +13,20 @@ interface RestaurantRow extends Record<string, unknown> {
   restaurantStatus: string;
 }
 
-export interface StaffRestaurantSummary {
+export interface RestaurantDetails {
   restaurantId: number;
   restaurantName: string;
   status: RestaurantStatus;
   menuItems: MenuItem[];
+  averageRating: number | null;
+  ratingCount: number;
+}
+
+export interface RestaurantRatingLookup {
+  getRestaurantSummary(restaurantId: number): Promise<{
+    averageRating: number | null;
+    ratingCount: number;
+  }>;
 }
 
 function parseId(value: unknown, field: string): number {
@@ -67,7 +76,10 @@ export class RestaurantService {
   private restaurants: Restaurant[] | null = null;
   private readonly menuService: MenuService;
 
-  constructor(private readonly query: DatabaseQuery = pool.query.bind(pool)) {
+  constructor(
+    private readonly query: DatabaseQuery = pool.query.bind(pool),
+    private readonly ratingLookup?: RestaurantRatingLookup,
+  ) {
     this.menuService = new MenuService(query);
   }
 
@@ -86,14 +98,16 @@ export class RestaurantService {
       }
 
       const [latitude, longitude] = parsePosition(row.restaurantPosition, restaurantId);
-      const menu = await this.menuService.getMenuForRestaurant(restaurantId);
+      const details = await this.buildRestaurantDetails(row);
       return new Restaurant(
         restaurantId,
         row.restaurantName,
-        parseRestaurantStatus(row.restaurantStatus, restaurantId),
+        details.status,
         latitude,
         longitude,
-        menu
+        new Menu(details.menuItems),
+        details.averageRating,
+        details.ratingCount,
       );
     }));
 
@@ -101,7 +115,7 @@ export class RestaurantService {
     return this.getRestaurants();
   }
 
-  public async getRestaurantForStaff(accountId: string): Promise<StaffRestaurantSummary | null> {
+  public async getRestaurantForStaff(accountId: string): Promise<RestaurantDetails | null> {
     const result = await this.query(
       `SELECT r."restaurantID", r."restaurantName", r."restaurantStatus"
        FROM public."Restaurant" r
@@ -118,7 +132,7 @@ export class RestaurantService {
       return null;
     }
 
-    return this.buildStaffRestaurantSummary(row);
+    return this.buildRestaurantDetails(row);
   }
 
   public async updateMenuItemStatusForStaff(
@@ -138,28 +152,28 @@ export class RestaurantService {
     return this.menuService.updateItemDetailsForStaff(accountId, itemId, itemName, price);
   }
 
-  public async pauseRestaurantForStaff(accountId: string): Promise<StaffRestaurantSummary | null> {
+  public async pauseRestaurantForStaff(accountId: string): Promise<RestaurantDetails | null> {
     return this.updateRestaurantStatusForStaff(accountId, RestaurantStatus.PAUSED);
   }
 
   private async updateRestaurantStatusForStaff(
     accountId: string,
     status: RestaurantStatus
-  ): Promise<StaffRestaurantSummary | null> {
+  ): Promise<RestaurantDetails | null> {
     return this.updateRestaurantStatus({ accountId }, status);
   }
 
   public async setRestaurantStatus(
     restaurantId: number,
     status: RestaurantStatus
-  ): Promise<StaffRestaurantSummary | null> {
+  ): Promise<RestaurantDetails | null> {
     return this.updateRestaurantStatus({ restaurantId }, status);
   }
 
   private async updateRestaurantStatus(
     scope: { accountId?: string; restaurantId?: number },
     status: RestaurantStatus
-  ): Promise<StaffRestaurantSummary | null> {
+  ): Promise<RestaurantDetails | null> {
     const values: unknown[] = [status];
     const conditions: string[] = [];
 
@@ -193,24 +207,37 @@ export class RestaurantService {
       return null;
     }
 
-    return this.buildStaffRestaurantSummary(row);
+    return this.buildRestaurantDetails(row);
   }
 
-  private async buildStaffRestaurantSummary(
+  private async buildRestaurantDetails(
     row: Record<string, unknown>
-  ): Promise<StaffRestaurantSummary> {
+  ): Promise<RestaurantDetails> {
     const restaurantId = parseId(row.restaurantID, 'restaurantID');
     if (typeof row.restaurantName !== 'string' || typeof row.restaurantStatus !== 'string') {
       throw new Error(`Invalid restaurant data returned for restaurant ${restaurantId}.`);
     }
 
     const menu = await this.menuService.getMenuForRestaurant(restaurantId);
-    // Add the average rating here once it is calculated from stored rating data.
+    let averageRating: number | null = null;
+    let ratingCount = 0;
+    if (this.ratingLookup) {
+      try {
+        ({ averageRating, ratingCount } = await this.ratingLookup.getRestaurantSummary(restaurantId));
+      } catch (error) {
+        // Ratings are optional until the rating table is installed in a local database.
+        if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === '42P01')) {
+          throw error;
+        }
+      }
+    }
     return {
       restaurantId,
       restaurantName: row.restaurantName,
       status: parseRestaurantStatus(row.restaurantStatus, restaurantId),
       menuItems: menu.items,
+      averageRating,
+      ratingCount,
     };
   }
 

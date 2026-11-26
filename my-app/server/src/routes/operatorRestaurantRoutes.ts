@@ -4,10 +4,11 @@ import { AuthenticationService } from '../application/REG/AuthenticationService.
 import { RegistrationService } from '../application/REG/RegistrationService.js';
 import { RestaurantStatus } from '../domain/ORD/RestaurantStatus.js';
 import { Role } from '../domain/REG/Role.js';
+import { RatingService } from '../application/RAT/RatingService.js';
 
 const router = Router();
 const authentication = new AuthenticationService(new RegistrationService());
-const restaurantService = new RestaurantService();
+const restaurantService = new RestaurantService(undefined, new RatingService());
 
 router.patch('/:restaurantId/status', async (request, response) => {
   const token = request.headers.authorization?.replace(/^Bearer\s+/i, '').trim();

@@ -4,9 +4,10 @@ import { RegistrationService } from '../application/REG/RegistrationService.js';
 import { Role } from '../domain/REG/Role.js';
 import { RestaurantService } from '../application/ORD/RestaurantService.js';
 import { MenuItemStatus } from '../domain/ORD/MenuItemStatus.js';
+import { RatingService } from '../application/RAT/RatingService.js';
 
 const router = Router();
-const restaurantService = new RestaurantService();
+const restaurantService = new RestaurantService(undefined, new RatingService());
 const authentication = new AuthenticationService(new RegistrationService());
 let restaurantsLoaded: Promise<unknown> | null = null;
 

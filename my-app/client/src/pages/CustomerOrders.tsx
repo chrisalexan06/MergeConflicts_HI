@@ -29,6 +29,8 @@ interface Restaurant {
   menu: {
     items: MenuItem[];
   };
+  averageRating: number | null;
+  ratingCount: number;
 }
 
 interface CustomerOrdersProps {
@@ -125,21 +127,15 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
         const data = body as Restaurant[];
         setRestaurants(data);
         setSelectedRestaurantId(data[0]?.restaurantId ?? null);
-        try {
-          const ratingSummaries = await listRestaurantRatingSummaries();
-          if (!controller.signal.aborted) {
-            setRestaurantRatingSummaries(Object.fromEntries(
-              ratingSummaries.map((summary) => [summary.restaurantId, summary])
-            ));
-            setRestaurantRatingsError(null);
-          }
-        } catch (ratingError) {
-          if (!controller.signal.aborted) {
-            setRestaurantRatingsError(
-              ratingError instanceof Error ? ratingError.message : 'Could not load restaurant ratings.'
-            );
-          }
-        }
+        setRestaurantRatingSummaries(Object.fromEntries(
+          data.filter((restaurant) => restaurant.averageRating !== null && restaurant.ratingCount > 0)
+            .map((restaurant) => [restaurant.restaurantId, {
+              restaurantId: restaurant.restaurantId,
+              averageRating: restaurant.averageRating as number,
+              ratingCount: restaurant.ratingCount,
+            }])
+        ));
+        setRestaurantRatingsError(null);
       } catch (requestError) {
         if (!controller.signal.aborted) {
           setError(requestError instanceof Error ? requestError.message : 'Failed to load restaurant data.');
