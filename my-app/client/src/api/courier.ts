@@ -25,7 +25,7 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
 }
 
 export function getCurrentCourier(token: string): Promise<CurrentCourier> {
-  return request<CurrentCourier>(token, '/me');
+  return request<CurrentCourier>(token, '/me', { cache: 'no-store' });
 }
 
 export function goOnDuty(token: string): Promise<CourierActionResult> {

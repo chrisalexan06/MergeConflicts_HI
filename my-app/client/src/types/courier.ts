@@ -25,6 +25,7 @@ export interface CurrentCourier {
   currentOrderStatus: CourierOrderStatus | null;
   currentOfferId: string | null;
   currentOfferStatus: CourierOrderStatus | null;
+  currentOfferRestaurantName: string | null;
 }
 
 export interface CourierActionResult {

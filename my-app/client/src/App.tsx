@@ -29,7 +29,7 @@ function isSignedInAccount(value: unknown): value is SignedInAccount {
 
 export function App() {
   const [feedback, setFeedback] = useState<{ message: string; isError: boolean } | null>(null);
-  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
+  const [authTab, setAuthTab] = useState<'landing' | 'login' | 'register'>('landing');
   const [currentUser, setCurrentUser] = useState<SignedInAccount | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('sessionToken'));
   const [authLoading, setAuthLoading] = useState(() => Boolean(localStorage.getItem('sessionToken')));
@@ -131,6 +131,7 @@ export function App() {
     setToken(null);
     localStorage.removeItem('sessionToken');
     setAuthError(null);
+    setAuthTab('landing');
     setFeedback({ message: 'Successfully logged out.', isError: false });
     navigate('/');
   };
@@ -153,53 +154,156 @@ export function App() {
   if (!currentUser || !token) {
     return (
       <div className="auth-page">
-        <div className="card auth-card">
-          <h1 className="brand">Sugar Dash</h1>
-          {alertBox}
-          {authError && (
-            <div className="alert alert-error" role="alert">
-              <span>{authError}</span>
+        {authTab === 'landing' ? (
+          <main className="landing-shell">
+            <header className="landing-nav">
+              <Link className="landing-brand" to="/" aria-label="Sugar Dash home">
+                <span className="landing-brand-mark" aria-hidden="true">S</span>
+                <span>Sugar Dash</span>
+              </Link>
+              <div className="landing-nav-login">
+                <span>Already have an account?</span>
+                <button
+                  type="button"
+                  className="landing-login-link"
+                  onClick={() => { setAuthTab('login'); setFeedback(null); }}
+                >
+                  Log in
+                </button>
+              </div>
+            </header>
+
+            {alertBox}
+            {authError && (
+              <div className="alert alert-error landing-session-error" role="alert">
+                <span>{authError}</span>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => void verifySession(localStorage.getItem('sessionToken'))}
+                >
+                  Retry session check
+                </button>
+              </div>
+            )}
+
+            <section className="landing-hero">
+              <div className="landing-copy">
+                <p className="landing-eyebrow"><span aria-hidden="true">✦</span>A little dose of sweetness</p>
+                <h1>
+                  Sugar Dash
+                </h1>
+                <p className="landing-description">
+                  Find your favorite treats and follow every step from kitchen to doorstep.
+                </p>
+                <div className="landing-actions">
+                  <button
+                    type="button"
+                    className="btn landing-primary-action"
+                    onClick={() => { setAuthTab('register'); setFeedback(null); }}
+                  >
+                    Create your account <span aria-hidden="true">→</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary landing-secondary-action"
+                    onClick={() => { setAuthTab('login'); setFeedback(null); }}
+                  >
+                    Log in
+                  </button>
+                </div>
+              </div>
+
+              <div className="landing-art" aria-label="A sample Sugar Dash delivery">
+                <div className="landing-orbit landing-orbit-one" />
+                <div className="landing-orbit landing-orbit-two" />
+                <div className="landing-spark landing-spark-one" aria-hidden="true">✦</div>
+                <div className="landing-spark landing-spark-two" aria-hidden="true">✧</div>
+                <div className="landing-order-card">
+                  <div className="landing-order-topline">
+                    <span className="landing-order-icon" aria-hidden="true">♡</span>
+                    <span className="landing-order-status"><i /> On its way</span>
+                  </div>
+                  <div className="landing-food-illustration" aria-hidden="true">
+                    <span className="landing-food-leaf">✦</span>
+                    <span className="landing-food-center">yum!</span>
+                  </div>
+                  <strong className="landing-card-title">Made with love.<br />Delivered with a dash.</strong>
+                  <div className="landing-progress" aria-label="Order progress">
+                    <span className="complete" /><span className="complete" /><span /><span />
+                  </div>
+                  <div className="landing-card-footer">
+                    <span>Kitchen</span><span>Courier</span><span>You!</span>
+                  </div>
+                </div>
+                <div className="landing-floating-note">
+                  <span aria-hidden="true">✿</span>
+                  <div><strong>Made nearby</strong></div>
+                </div>
+              </div>
+            </section>
+
+            <footer className="landing-footer">
+              <span>Satisfy your cravings.</span>
+              <span><i /> Browse · Order · Enjoy</span>
+            </footer>
+          </main>
+        ) : (
+          <div className="card auth-card">
+            <button
+              type="button"
+              className="auth-home-link"
+              onClick={() => { setAuthTab('landing'); setFeedback(null); }}
+            >
+              <span aria-hidden="true">←</span> Back to home
+            </button>
+            <h1 className="brand">Sugar Dash</h1>
+            {alertBox}
+            {authError && (
+              <div className="alert alert-error" role="alert">
+                <span>{authError}</span>
+                <button
+                  type="button"
+                  onClick={() => void verifySession(localStorage.getItem('sessionToken'))}
+                >
+                  Retry session check
+                </button>
+              </div>
+            )}
+
+            <div className="auth-tabs">
               <button
                 type="button"
-                onClick={() => void verifySession(localStorage.getItem('sessionToken'))}
+                className={`tab ${authTab === 'login' ? 'active' : ''}`}
+                onClick={() => { setAuthTab('login'); setFeedback(null); }}
               >
-                Retry session check
+                Log In
+              </button>
+              <button
+                type="button"
+                className={`tab ${authTab === 'register' ? 'active' : ''}`}
+                onClick={() => { setAuthTab('register'); setFeedback(null); }}
+              >
+                Register
               </button>
             </div>
-          )}
 
-          <div className="auth-tabs">
-            <button
-              type="button"
-              className={`tab ${authTab === 'login' ? 'active' : ''}`}
-              onClick={() => { setAuthTab('login'); setFeedback(null); }}
-            >
-              Log In
-            </button>
-            <button
-              type="button"
-              className={`tab ${authTab === 'register' ? 'active' : ''}`}
-              onClick={() => { setAuthTab('register'); setFeedback(null); }}
-            >
-              Register
-            </button>
+            {authTab === 'login' ? (
+              <LoginPanel
+                onLoginSuccess={handleLoginSuccess}
+                onError={(err) => setFeedback({ message: err, isError: true })}
+              />
+            ) : (
+              <RegistrationPanel
+                onSuccess={(msg) => {
+                  setFeedback({ message: `${msg} Please log in below.`, isError: false });
+                  setAuthTab('login');
+                }}
+                onError={(err) => setFeedback({ message: err, isError: true })}
+              />
+            )}
           </div>
-
-          {authTab === 'login' ? (
-            <LoginPanel
-              onLoginSuccess={handleLoginSuccess}
-              onError={(err) => setFeedback({ message: err, isError: true })}
-            />
-          ) : (
-            <RegistrationPanel
-              onSuccess={(msg) => {
-                setFeedback({ message: `${msg} Please log in below.`, isError: false });
-                setAuthTab('login');
-              }}
-              onError={(err) => setFeedback({ message: err, isError: true })}
-            />
-          )}
-        </div>
+        )}
       </div>
     );
   }
@@ -212,7 +316,7 @@ export function App() {
         {currentUser.role === 'customer' && <Link to="/customer">Restaurants &amp; Orders</Link>}
         {currentUser.role === 'restaurant' && <Link to="/restaurant">Restaurant Orders</Link>}
         {currentUser.role === 'courier' && <Link to="/courier">Courier Dashboard</Link>}
-        {currentUser.role === 'operator' && <Link to="/operator">City operations</Link>}
+        {currentUser.role === 'operator' && <Link to="/operator">City Operations</Link>}
         <CurrentUserPanel account={currentUser} token={token} onLogout={handleLogout} />
       </nav>
 

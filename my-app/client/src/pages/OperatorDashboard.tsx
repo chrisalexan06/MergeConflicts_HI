@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -37,8 +38,18 @@ interface DashboardMapData {
   couriers: CourierMarker[];
 }
 
+type OperatorView = 'overview' | 'orders' | 'ledger' | 'settings';
+
 function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function formatDisplayText(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/(^|\s)([a-z])/g, (_match, boundary: string, initial: string) => (
+      `${boundary}${initial.toUpperCase()}`
+    ));
 }
 
 function escapeHtml(value: string): string {
@@ -48,6 +59,12 @@ function escapeHtml(value: string): string {
 }
 
 export default function OperatorDashboard({ token }: { token: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedView = searchParams.get('view');
+  const view: OperatorView = requestedView === 'orders' || requestedView === 'ledger' || requestedView === 'settings'
+    ? requestedView
+    : 'overview';
+  const setView = (nextView: OperatorView) => setSearchParams({ view: nextView });
   const [data, setData] = useState<DashboardMapData | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
   const [error, setError] = useState('');
@@ -255,7 +272,7 @@ export default function OperatorDashboard({ token }: { token: string }) {
   }
 
   useEffect(() => {
-    if (mapLoading || !data || !mapElement.current || (data.restaurants.length === 0 && data.couriers.length === 0)) return;
+    if (view !== 'overview' || mapLoading || !data || !mapElement.current || (data.restaurants.length === 0 && data.couriers.length === 0)) return;
 
     const map = L.map(mapElement.current, { zoomControl: true, scrollWheelZoom: true });
     const tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -295,25 +312,34 @@ export default function OperatorDashboard({ token }: { token: string }) {
     else map.setView([45.5017, -73.5673], 12);
 
     return () => { map.remove(); };
-  }, [data, mapLoading]);
+  }, [data, mapLoading, view]);
 
   return (
     <section className="operator-dashboard">
       <div className="operator-heading">
-        <div><p className="eyebrow">Live city overview</p><h1>City operations</h1></div>
+        <div><h1>City Operations</h1></div>
         {data && <p>{data.restaurants.length} restaurants · {data.couriers.length} on-duty couriers</p>}
       </div>
-      <div className="operator-reset-controls">
+      <nav className="view-tabs" aria-label="Operator pages">
+        <button type="button" className={view === 'overview' ? 'view-tab active' : 'view-tab'} aria-current={view === 'overview' ? 'page' : undefined} onClick={() => setView('overview')}>City Overview</button>
+        <button type="button" className={view === 'orders' ? 'view-tab active' : 'view-tab'} aria-current={view === 'orders' ? 'page' : undefined} onClick={() => setView('orders')}>Orders</button>
+        <button type="button" className={view === 'ledger' ? 'view-tab active' : 'view-tab'} aria-current={view === 'ledger' ? 'page' : undefined} onClick={() => setView('ledger')}>Ledger</button>
+        <button type="button" className={view === 'settings' ? 'view-tab active' : 'view-tab'} aria-current={view === 'settings' ? 'page' : undefined} onClick={() => setView('settings')}>System</button>
+      </nav>
+      {view === 'settings' && <div className="operator-reset-controls">
         <button type="button" onClick={handleRestoreInitialState} disabled={resetInProgress}>
           {resetInProgress ? 'Restoring…' : 'Restore Initial State'}
         </button>
         {resetFeedback && <p role="status">{resetFeedback}</p>}
         {resetError && <p role="alert">{resetError}</p>}
-      </div>
-      <section className="operator-reassignment" aria-labelledby="operator-reassignment-heading">
-        <h2 id="operator-reassignment-heading">Reassign stalled order</h2>
-        <p>Enter the order ID and the ID of the courier who should receive it.</p>
-        <form onSubmit={(event) => void handleReassignOrder(event)}>
+      </div>}
+      {view === 'orders' && <section className="operator-reassignment" aria-labelledby="operator-reassignment-heading">
+        <header className="operator-reassignment-heading">
+          <div>
+            <h2 id="operator-reassignment-heading">Reassign a Stalled Order</h2>
+          </div>
+        </header>
+        <form className="operator-reassignment-form" onSubmit={(event) => void handleReassignOrder(event)}>
           <label>
             Order ID
             <input
@@ -342,16 +368,19 @@ export default function OperatorDashboard({ token }: { token: string }) {
               checked={confirmedHandoff}
               onChange={event => setConfirmedHandoff(event.target.checked)}
             />
-            Confirm physical handoff if the order was picked up
+            <span>
+              <strong>Physical handoff</strong>
+              <small>Check if the order has already been picked up.</small>
+            </span>
           </label>
-          <button type="submit" disabled={reassignmentInProgress}>
+          <button className="btn btn-secondary operator-reassignment-submit" type="submit" disabled={reassignmentInProgress}>
             {reassignmentInProgress ? 'Reassigning…' : 'Reassign order'}
           </button>
         </form>
         {reassignmentFeedback && <p role="status">{reassignmentFeedback}</p>}
         {reassignmentError && <p role="alert">{reassignmentError}</p>}
-      </section>
-      <section className="operator-restaurants" aria-labelledby="operator-restaurants-heading">
+      </section>}
+      {view === 'overview' && <section className="operator-restaurants" aria-labelledby="operator-restaurants-heading">
         <h2 id="operator-restaurants-heading">Restaurants</h2>
         {restaurantStatusFeedback && <p role="status">{restaurantStatusFeedback}</p>}
         {restaurantStatusError && <p role="alert">{restaurantStatusError}</p>}
@@ -396,8 +425,8 @@ export default function OperatorDashboard({ token }: { token: string }) {
                   </li>
                 ))}
               </ul>}
-      </section>
-      <section className="operator-ledger" aria-labelledby="operator-ledger-heading">
+      </section>}
+      {view === 'ledger' && <section className="operator-ledger" aria-labelledby="operator-ledger-heading">
         <h2 id="operator-ledger-heading">Ledger History</h2>
         {refundFeedback && <p role="status">{refundFeedback}</p>}
         {refundError && <p role="alert">{refundError}</p>}
@@ -423,6 +452,9 @@ export default function OperatorDashboard({ token }: { token: string }) {
               </thead>
               <tbody>
                 {ledgerEntries.map(entry => {
+                  const relatedOrder = orders.find(
+                    order => String(order.orderId) === entry.orderId
+                  );
                   const hasRefund = ledgerEntries.some(
                     candidate => candidate.orderId === entry.orderId && candidate.entryType === 'refund'
                   );
@@ -432,19 +464,26 @@ export default function OperatorDashboard({ token }: { token: string }) {
                   return (
                     <tr key={entry.ledgerEntryId}>
                       <td>#{entry.orderId}</td>
-                      <td>{entry.entryType}</td>
-                      <td>{entry.orderStatus}</td>
+                      <td>{formatDisplayText(entry.entryType)}</td>
+                      <td>{formatDisplayText(entry.orderStatus)}</td>
                       <td>${entry.amount.toFixed(2)}</td>
                       <td>${entry.subtotal.toFixed(2)}</td>
                       <td>${entry.total.toFixed(2)}</td>
-                      <td>{entry.customerId}</td>
-                      <td>{entry.restaurantId}</td>
-                      <td>{entry.courierId ?? '—'}</td>
+                      <td>{relatedOrder?.customerName
+                        ? formatDisplayText(relatedOrder.customerName)
+                        : `Customer #${entry.customerId}`}</td>
+                      <td>{relatedOrder?.restaurantName
+                        ? formatDisplayText(relatedOrder.restaurantName)
+                        : `Restaurant #${entry.restaurantId}`}</td>
+                      <td>{relatedOrder?.courierName
+                        ? formatDisplayText(relatedOrder.courierName)
+                        : entry.courierId === null ? '—' : `Courier #${entry.courierId}`}</td>
                       <td>{new Date(entry.deliveredAt).toLocaleString()}</td>
                       <td>
                         {isRefundEligible && (
                           <button
                             type="button"
+                            className="btn"
                             disabled={refundingOrderId === entry.orderId}
                             onClick={() => void handleRefundOrder(entry.orderId)}
                           >
@@ -459,8 +498,8 @@ export default function OperatorDashboard({ token }: { token: string }) {
             </table>
           </div>
         )}
-      </section>
-      <section className="operator-orders" aria-labelledby="operator-orders-heading">
+      </section>}
+      {view === 'orders' && <section className="operator-orders" aria-labelledby="operator-orders-heading">
         <h2 id="operator-orders-heading">All Orders</h2>
         {ordersError && <p role="alert">{ordersError}</p>}
         {!ordersError && orders.length === 0 && <p>No orders found.</p>}
@@ -483,12 +522,12 @@ export default function OperatorDashboard({ token }: { token: string }) {
                 {orders.map(order => (
                   <tr key={order.orderId}>
                     <td>#{order.orderId}</td>
-                    <td>{order.status}</td>
-                    <td>{order.customerName ?? `#${order.customerId}`}</td>
+                    <td>{formatDisplayText(order.status)}</td>
+                    <td>{formatDisplayText(order.customerName ?? `Customer #${order.customerId}`)}</td>
                     <td>{order.restaurantName ?? `#${order.restaurantId}`}</td>
                     <td>{order.courierName
-                      ? `${order.courierName} (#${order.courierId})`
-                      : order.courierId == null ? '—' : `#${order.courierId}`}</td>
+                      ? `${formatDisplayText(order.courierName)} (#${order.courierId})`
+                      : order.courierId == null ? '—' : `Courier #${order.courierId}`}</td>
                     <td>{order.items.map(item => `${item.quantity} × ${item.itemName}`).join(', ')}</td>
                     <td>{new Date(order.createdAt).toLocaleString()}</td>
                     <td>{new Date(order.updatedAt).toLocaleString()}</td>
@@ -498,7 +537,8 @@ export default function OperatorDashboard({ token }: { token: string }) {
             </table>
           </div>
         )}
-      </section>
+      </section>}
+      {view === 'overview' && <>
       <div className="operator-map-toolbar">
         <h2>City map</h2>
         <button type="button" onClick={handleMapRefresh} disabled={mapLoading}>Refresh map</button>
@@ -532,6 +572,7 @@ export default function OperatorDashboard({ token }: { token: string }) {
                 <div className="legend-group"><strong>Courier status</strong><span><i className="status-dot status-idle" /> Idle</span><span><i className="status-dot status-assigned" /> Assigned</span><span><i className="status-dot status-carrying" /> Carrying</span></div>
               </div>
             </>}
+      </>}
     </section>
   );
 }

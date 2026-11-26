@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { cancelOrder, getCustomerOrder, listCustomerOrders, placeOrder } from '../api/orders';
 import { getCustomerProfile, saveCustomerProfile, type CustomerProfile } from '../api/customerProfile';
 import {
@@ -35,8 +36,15 @@ interface CustomerOrdersProps {
 }
 
 const emptyCustomerProfile: CustomerProfile = { deliveryAddress: '', city: '', country: '' };
+type CustomerView = 'browse' | 'order' | 'history';
 
 export default function CustomerOrders({ token }: CustomerOrdersProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedView = searchParams.get('view');
+  const view: CustomerView = requestedView === 'order' || requestedView === 'history'
+    ? requestedView
+    : 'browse';
+  const setView = (nextView: CustomerView) => setSearchParams({ view: nextView });
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customerRatings, setCustomerRatings] = useState<Record<number, CustomerOrderRating>>({});
@@ -227,7 +235,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
           ? 'Some selected items are sold out. Remove them before placing the order.'
           : selectedMenuItems.length === 0
             ? 'Select at least one menu item before placing your order.'
-            : 'Place your order.';
+          : null;
 
   async function handlePlaceOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -272,6 +280,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
   async function handleSaveCustomerProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (profileIsSaved) return;
     const profile = {
       deliveryAddress: customerProfile.deliveryAddress.trim(),
       city: customerProfile.city.trim(),
@@ -343,9 +352,22 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
       {!loading && !error && (
         <>
-          {/* browse restaurants */}
-          <section className="card">
-            <h2 className="page-title">Restaurants</h2>
+          <header className="page-heading">
+            <div>
+              <h1 className="page-title">Your Sugar Dash</h1>
+            </div>
+          </header>
+          <nav className="view-tabs" aria-label="Customer pages">
+            <button type="button" className={view === 'browse' ? 'view-tab active' : 'view-tab'} aria-current={view === 'browse' ? 'page' : undefined} onClick={() => setView('browse')}>Browse Menus</button>
+            <button type="button" className={view === 'order' ? 'view-tab active' : 'view-tab'} aria-current={view === 'order' ? 'page' : undefined} onClick={() => setView('order')}>Place an Order</button>
+            <button type="button" className={view === 'history' ? 'view-tab active' : 'view-tab'} aria-current={view === 'history' ? 'page' : undefined} onClick={() => setView('history')}>My Orders</button>
+          </nav>
+
+          {view === 'browse' && <section className="card">
+            <div className="section-heading">
+              <div><h2 className="page-title">Restaurants &amp; Menus</h2></div>
+              <span className="muted">{restaurants.length} {restaurants.length === 1 ? 'restaurant' : 'restaurants'}</span>
+            </div>
             {restaurants.length === 0 ? (
               <p className="muted">No restaurants were returned by the API.</p>
             ) : (
@@ -365,7 +387,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                     {restaurant.menu.items.length === 0 ? (
                       <p className="muted">No menu items.</p>
                     ) : (
-                      <table>
+                      <table className="menu-table">
                         <tbody>
                           {restaurant.menu.items.map((item) => (
                             <tr key={item.itemId}>
@@ -381,15 +403,30 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                         </tbody>
                       </table>
                     )}
+                    <button
+                      type="button"
+                      className="btn btn-secondary restaurant-order-link"
+                      onClick={() => {
+                        setSelectedRestaurantId(restaurant.restaurantId);
+                        setSelectedItems({});
+                        setQuantities({});
+                        setOrderResult(null);
+                        setView('order');
+                      }}
+                    >
+                      Choose this restaurant
+                    </button>
                   </article>
                 ))}
               </div>
             )}
-          </section>
+          </section>}
 
-          {/* place an order */}
-          <section className="card">
-            <h2 className="page-title">Place an order</h2>
+          {view === 'order' && <section className="card">
+            <div className="section-heading">
+              <div><h2 className="page-title">Build your order</h2></div>
+              <button type="button" className="btn btn-secondary" onClick={() => setView('browse')}>Back to menus</button>
+            </div>
             <form onSubmit={handleSaveCustomerProfile} className="customer-profile-form">
               <h3>Delivery details</h3>
               <div className="customer-profile-fields">
@@ -436,13 +473,19 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                   />
                 </div>
               </div>
-              <button
-                type="submit"
-                className="btn btn-secondary"
-                disabled={profileLoading || savingProfile || !profileComplete}
-              >
-                {savingProfile ? 'Saving delivery details...' : profileIsSaved ? 'Delivery details saved' : 'Save delivery details'}
-              </button>
+              <div className="customer-profile-save-slot">
+                {profileIsSaved ? (
+                  <p className="customer-profile-saved" role="status">✓ Delivery details saved</p>
+                ) : (
+                  <button
+                    type="submit"
+                    className="btn btn-secondary"
+                    disabled={profileLoading || savingProfile || !profileComplete}
+                  >
+                    {savingProfile ? 'Saving delivery details...' : 'Save delivery details'}
+                  </button>
+                )}
+              </div>
             </form>
             {restaurants.length === 0 ? (
               <p className="muted">Ordering is unavailable because no restaurants were loaded.</p>
@@ -533,7 +576,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                   <button
                     type="submit"
                     className="btn form-submit"
-                    aria-describedby="place-order-tooltip"
+                    aria-describedby={placeOrderTooltip ? 'place-order-tooltip' : undefined}
                     disabled={
                       placingOrder
                       || profileLoading
@@ -545,9 +588,11 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                   >
                     {placingOrder ? 'Placing order...' : 'Place order'}
                   </button>
-                  <span id="place-order-tooltip" role="tooltip" className="place-order-tooltip">
-                    {placeOrderTooltip}
-                  </span>
+                  {placeOrderTooltip && (
+                    <span id="place-order-tooltip" role="tooltip" className="place-order-tooltip">
+                      {placeOrderTooltip}
+                    </span>
+                  )}
                 </span>
               </form>
             )}
@@ -560,9 +605,9 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                 {orderResult}
               </div>
             )}
-          </section>
+          </section>}
 
-          {/* track order */}
+          {view === 'history' && <>
           <section className="card" aria-labelledby="track-order-heading">
             <h2 id="track-order-heading" className="page-title">Track an order</h2>
             <form onSubmit={handleTrackOrderSubmit} className="inline-form">
@@ -593,7 +638,9 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
                   </span>
                 </div>
                 <p className="muted">
-                  Restaurant {trackedOrder.restaurantId} · Placed {new Date(trackedOrder.createdAt).toLocaleString()}
+                  {restaurants.find((restaurant) => restaurant.restaurantId === trackedOrder.restaurantId)?.restaurantName
+                    ?? `Restaurant #${trackedOrder.restaurantId}`}
+                  {' · '}Placed {new Date(trackedOrder.createdAt).toLocaleString()}
                 </p>
                 {trackedOrder.items.map((item) => (
                   <div key={item.itemId}>{item.quantity} x {item.itemName}</div>
@@ -612,6 +659,9 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
           <CustomerCurrentOrders
             orders={orders}
+            restaurantNames={Object.fromEntries(
+              restaurants.map((restaurant) => [restaurant.restaurantId, restaurant.restaurantName])
+            )}
             ratings={customerRatings}
             onTrackOrder={(orderId) => void handleTrackOrder(orderId)}
             onCancelOrder={handleCancelOrder}
@@ -620,6 +670,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
           {ordersError && <div role="alert" className="alert alert-error">Error loading orders: {ordersError}</div>}
           {ratingsError && <div role="alert" className="alert alert-error">Error loading ratings: {ratingsError}</div>}
           {restaurantRatingsError && <div role="alert" className="alert alert-error">Restaurant ratings unavailable: {restaurantRatingsError}</div>}
+          </>}
         </>
       )}
     </main>

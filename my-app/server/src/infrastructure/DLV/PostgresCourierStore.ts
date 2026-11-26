@@ -19,12 +19,14 @@ interface CourierRow {
   currentOrderStatus: string | null;
   currentOfferId: string | null;
   currentOfferStatus: string | null;
+  currentOfferRestaurantName: string | null;
 }
 
 export interface CourierWithOrderStatus extends Courier {
   currentOrderStatus: string | null;
   currentOfferId: string | null;
   currentOfferStatus: string | null;
+  currentOfferRestaurantName: string | null;
 }
 
 function mapCourier(row: CourierRow): CourierWithOrderStatus {
@@ -42,6 +44,7 @@ function mapCourier(row: CourierRow): CourierWithOrderStatus {
       ? null
       : String(row.currentOfferId),
     currentOfferStatus: row.currentOfferStatus,
+    currentOfferRestaurantName: row.currentOfferRestaurantName,
   });
 }
 
@@ -56,7 +59,8 @@ export class PostgresCourierStore implements ICourierStore {
       active.order_id AS "currentOrderId",
       active."currentOrderStatus",
       offer.order_id AS "currentOfferId",
-      offer."currentOfferStatus"
+      offer."currentOfferStatus",
+      offer."currentOfferRestaurantName"
     FROM public."Courier" c
     JOIN public."Account" a
       ON a."accountID" = c."accountID"
@@ -70,10 +74,15 @@ export class PostgresCourierStore implements ICourierStore {
       LIMIT 1
     ) active ON TRUE
     LEFT JOIN LATERAL (
-      SELECT o.order_id, o."orderStatus" AS "currentOfferStatus"
+      SELECT
+        o.order_id,
+        o."orderStatus" AS "currentOfferStatus",
+        r."restaurantName" AS "currentOfferRestaurantName"
       FROM public.ready_order_details d
       JOIN public.orders o
         ON o.order_id = d.order_id
+      JOIN public."Restaurant" r
+        ON r."restaurantID" = o."restaurantID"
       JOIN public.queue_entries qe
         ON qe.order_id = o.order_id
       JOIN public.queues q
@@ -303,6 +312,7 @@ async findRestaurantPosition(
     onDuty: boolean
   ): Promise<Courier> {
     return this.transaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(42042, 4);');
       const courier = await this.lockCourier(
         client, courierId
       );
@@ -310,10 +320,33 @@ async findRestaurantPosition(
       if (onDuty) {
         courier.goOnDuty();
       } else {
-        if (await this.hasPendingOffer(client, courierId)) {
-          throw new Error('Courier must accept the offered order before going offline.');
-        }
         courier.goOffDuty();
+        await client.query(
+          `UPDATE public.ready_order_details d
+           SET "assignedCourier" = NULL
+           WHERE d."assignedCourier" = $1
+             AND d.pickup_time IS NULL
+             AND d.delivery_time IS NULL
+             AND EXISTS (
+               SELECT 1
+               FROM public.orders o
+               JOIN public.queue_entries qe
+                 ON qe.order_id = o.order_id
+               JOIN public.queues q
+                 ON q.queue_id = qe.queue_id
+               WHERE o.order_id = d.order_id
+                 AND o."orderStatus" = 'ready'
+                 AND q.name = 'dispatch'
+                 AND qe.exited_at IS NULL
+             )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM public.courier_assignments ca
+               WHERE ca.order_id = d.order_id
+                 AND ca.unassigned_at IS NULL
+             )`,
+          [courierId]
+        );
       }
 
       await client.query(

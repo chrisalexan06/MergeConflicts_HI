@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { listRestaurantOrders, updateRestaurantOrder, type RestaurantOrderAction } from '../api/orders';
 import {
 	getMyRestaurant,
@@ -19,6 +20,8 @@ interface MenuItemEdit {
 	price: string;
 }
 
+type RestaurantView = 'orders' | 'menu';
+
 const actionsByStatus: Partial<Record<Order['orderStatus'], RestaurantOrderAction[]>> = {
 	placed: ['accept', 'cancel'],
 	accepted: ['preparing', 'cancel'],
@@ -33,6 +36,9 @@ const actionLabels: Record<RestaurantOrderAction, string> = {
 };
 
 export default function RestaurantDashboard({ token }: RestaurantDashboardProps) {
+	const [searchParams, setSearchParams] = useSearchParams();
+	const view: RestaurantView = searchParams.get('view') === 'menu' ? 'menu' : 'orders';
+	const setView = (nextView: RestaurantView) => setSearchParams({ view: nextView });
 	const [orders, setOrders] = useState<Order[]>([]);
 	const [restaurant, setRestaurant] = useState<StaffRestaurant | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -41,6 +47,7 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 	const [updatingMenuItemId, setUpdatingMenuItemId] = useState<number | null>(null);
 	const [editingMenuItem, setEditingMenuItem] = useState<MenuItemEdit | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [orderActionError, setOrderActionError] = useState<{ orderId: number; message: string } | null>(null);
 
 	async function refreshOrders() {
 		setOrders(await listRestaurantOrders(token));
@@ -76,11 +83,15 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 	async function handleAction(orderId: number, action: RestaurantOrderAction) {
 		setUpdatingOrderId(orderId);
 		setError(null);
+		setOrderActionError(null);
 		try {
 			await updateRestaurantOrder(token, orderId, action);
 			await refreshOrders();
 		} catch (requestError) {
-			setError(requestError instanceof Error ? requestError.message : 'Could not update the order.');
+			setOrderActionError({
+				orderId,
+				message: requestError instanceof Error ? requestError.message : 'Could not update the order.',
+			});
 		} finally {
 			setUpdatingOrderId(null);
 		}
@@ -135,23 +146,35 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 
 	return (
 		<section aria-labelledby="restaurant-orders-heading" className="card">
-			<h2 id="restaurant-orders-heading" className="page-title">Restaurant Dashboard</h2>
+			<header className="page-heading">
+				<div>
+					<h1 id="restaurant-orders-heading" className="page-title">{restaurant?.restaurantName ?? 'Restaurant dashboard'}</h1>
+				</div>
+				{restaurant && <span className={`badge badge-${restaurant.status}`}>{restaurant.status}</span>}
+			</header>
 			{restaurant && (
-				<div className="actions">
-					<p>{restaurant.restaurantName} · Status: {restaurant.status}</p>
+				<div className="restaurant-availability-actions">
+					<p className="muted">Restaurant availability</p>
 					{restaurant.status === 'open' && (
 						<button
 							type="button"
-							className="btn btn-secondary"
+							className="btn btn-secondary restaurant-pause-button"
 							disabled={updatingRestaurantStatus}
 							onClick={() => void handlePauseRestaurant()}
 						>
-							{updatingRestaurantStatus ? 'Updating…' : 'Pause Restaurant'}
+							{updatingRestaurantStatus ? 'Updating…' : 'Pause restaurant'}
 						</button>
 					)}
 				</div>
 			)}
-			<h3>Menu Availability</h3>
+			{loading && <p className="muted" role="status">Loading your restaurant workspace…</p>}
+			{error && <div role="alert" className="alert alert-error">{error}</div>}
+			<nav className="view-tabs" aria-label="Restaurant pages">
+				<button type="button" className={view === 'orders' ? 'view-tab active' : 'view-tab'} aria-current={view === 'orders' ? 'page' : undefined} onClick={() => setView('orders')}>Incoming Orders</button>
+				<button type="button" className={view === 'menu' ? 'view-tab active' : 'view-tab'} aria-current={view === 'menu' ? 'page' : undefined} onClick={() => setView('menu')}>Menu &amp; Availability</button>
+			</nav>
+			{view === 'menu' && <>
+			<h3>Menu & Availability</h3>
 			{restaurant && restaurant.menuItems.length === 0 && (
 				<p className="muted">No menu items for this restaurant.</p>
 			)}
@@ -204,7 +227,7 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 											<td>${item.price.toFixed(2)}</td>
 										</>
 									)}
-									<td>{item.status}</td>
+									<td>{item.status === 'available' ? 'Available' : 'Sold Out'}</td>
 									<td className="menu-item-actions-cell">
 										<div className="menu-item-actions">
 											{editingMenuItem?.itemId === item.itemId ? (
@@ -267,10 +290,10 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 					</table>
 				</div>
 			)}
+			</>}
+			{view === 'orders' && <>
 			<h3>Restaurant Orders</h3>
 
-			{loading && <p className="muted">Loading Orders...</p>}
-			{error && <div role="alert" className="alert alert-error">{error}</div>}
 			{!loading && orders.length === 0 && <p className="muted">No orders for this restaurant.</p>}
 
 			{!loading && orders.length > 0 && (
@@ -317,6 +340,11 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 									: actionLabels[action]}
 							</button>
 							))}
+							{orderActionError?.orderId === order.orderId && (
+							<p className="order-action-error" role="alert">
+								{orderActionError.message}
+							</p>
+							)}
 						</div>
 						</td>
 					</tr>
@@ -325,6 +353,7 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 				</table>
 			</div>
 			)}
+			</>}
 		</section>
 	);
 }
