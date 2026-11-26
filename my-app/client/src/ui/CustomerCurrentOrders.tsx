@@ -5,6 +5,7 @@ import "./CustomerCurrentOrders.css";
 
 interface CustomerCurrentOrdersProps {
   orders: Order[];
+  restaurantNames: Record<number, string>;
   ratings: Record<number, CustomerOrderRating>;
   onTrackOrder(orderId: number): void;
   onCancelOrder(orderId: number): Promise<void>;
@@ -50,7 +51,7 @@ function StarRating({ label, value, onChange, disabled, messages }: StarRatingPr
   );
 }
 
-export function CustomerCurrentOrders({ orders, ratings, onTrackOrder, onCancelOrder, onSubmitRating }: CustomerCurrentOrdersProps) {
+export function CustomerCurrentOrders({ orders, restaurantNames, ratings, onTrackOrder, onCancelOrder, onSubmitRating }: CustomerCurrentOrdersProps) {
   const [message, setMessage] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
@@ -101,7 +102,7 @@ export function CustomerCurrentOrders({ orders, ratings, onTrackOrder, onCancelO
                         #{order.orderId}
                       </button>
                     </td>
-                    <td>{order.restaurantId}</td>
+                    <td>{restaurantNames[order.restaurantId] ?? `Restaurant #${order.restaurantId}`}</td>
                     <td>{new Date(order.createdAt).toLocaleString()}</td>
                     <td>
                       {order.items.map((item, i) => (

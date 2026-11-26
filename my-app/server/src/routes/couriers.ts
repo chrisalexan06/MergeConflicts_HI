@@ -66,7 +66,8 @@ router.get('/me', async (_req, res) => {
       currentOrderId: courier.currentOrderId,
       currentOrderStatus: courier.currentOrderStatus,
       currentOfferId: courier.currentOfferId,
-      currentOfferStatus: courier.currentOfferStatus
+      currentOfferStatus: courier.currentOfferStatus,
+      currentOfferRestaurantName: courier.currentOfferRestaurantName
     });
   } catch (error) {
     sendError(res, error);
@@ -97,6 +98,12 @@ router.post('/off-duty', async (_req, res) => {
     const courier = await courierService.goOffDuty(
       res.locals.courierId
     );
+
+    try {
+      await dispatchQueue.retryPendingOrders();
+    } catch (error) {
+      console.error('Dispatch retry failed after courier went off duty:', error);
+    }
 
     res.json({ status: courier.status });
   } catch (error) {

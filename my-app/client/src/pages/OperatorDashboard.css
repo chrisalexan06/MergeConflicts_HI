@@ -6,16 +6,89 @@
 .operator-reset-controls button { border: 0; border-radius: 8px; padding: .65rem 1rem; background: #c8664e; color: white; font: inherit; font-weight: 700; cursor: pointer; }
 .operator-reset-controls button:disabled { cursor: wait; opacity: .65; }
 .operator-reset-controls p { margin: 0; }
-.operator-reassignment { margin: 1rem 0; padding: 1rem; border: 1px solid #dce2ec; border-radius: 12px; background: #fff; }
-.operator-reassignment h2 { margin: 0 0 .4rem; font-size: 1.1rem; }
-.operator-reassignment p { margin: .4rem 0 .75rem; color: #64708a; }
-.operator-reassignment form { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; }
-.operator-reassignment form > label:not(.operator-handoff-confirmation) { display: grid; gap: .3rem; min-width: 150px; color: #263044; font-size: .9rem; font-weight: 700; }
-.operator-reassignment input[type="number"] { padding: .5rem .65rem; }
-.operator-reassignment .operator-handoff-confirmation { display: flex; align-items: center; gap: .4rem; margin: 0; font-size: .85rem; }
-.operator-reassignment input[type="checkbox"] { width: auto; }
-.operator-reassignment button { border: 0; border-radius: 8px; padding: .6rem .9rem; background: #c8664e; color: white; font: inherit; font-weight: 700; cursor: pointer; }
-.operator-reassignment button:disabled { cursor: wait; opacity: .65; }
+.operator-reassignment {
+  margin: 0 0 18px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid #e5edef;
+  border-top: 3px solid var(--primary);
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 8px 26px rgba(40, 74, 82, 0.06);
+}
+.operator-reassignment-heading h2 { margin: 0; color: #2b4148; font-size: 1.2rem; }
+.operator-reassignment-heading p { margin: 5px 0 20px; color: #75868a; font-size: .9rem; }
+.operator-reassignment-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 14px 18px;
+}
+.operator-reassignment-form .operator-reassignment-field {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  margin: 0;
+  color: #4a6066;
+  font-size: .84rem;
+  font-weight: 750;
+}
+.operator-reassignment-field input[type="number"] {
+  min-height: 46px;
+  padding: 10px 13px;
+  border-color: #dce8e9;
+  border-radius: 10px;
+}
+.operator-reassignment-form .operator-reassignment-submit {
+  min-height: 42px;
+  justify-self: start;
+  align-self: center;
+  padding: 8px 14px;
+  white-space: nowrap;
+}
+.operator-reassignment-form .operator-handoff-confirmation {
+  display: flex;
+  min-height: 58px;
+  grid-column: 2;
+  grid-row: 2;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid #f0e2e8;
+  border-radius: 11px;
+  background: white;
+  color: #4d6267;
+  cursor: pointer;
+}
+.operator-reassignment-form .operator-handoff-confirmation input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.operator-handoff-confirmation span,
+.operator-handoff-confirmation strong,
+.operator-handoff-confirmation small { display: block; }
+.operator-handoff-confirmation strong { font-size: .82rem; }
+.operator-handoff-confirmation small { margin-top: 2px; color: #829195; font-size: .75rem; font-weight: 500; }
+.operator-reassignment > [role="status"],
+.operator-reassignment > [role="alert"] { margin: 16px 0 0; }
+.operator-reassignment > [role="status"] { color: #21764e; }
+.operator-reassignment > [role="alert"] { color: #a83232; }
+
+@media (max-width: 620px) {
+  .operator-reassignment-form { grid-template-columns: 1fr; }
+  .operator-reassignment-form .operator-handoff-confirmation {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .operator-reassignment-form .operator-reassignment-submit {
+    grid-column: 1;
+    grid-row: 3;
+    width: auto;
+  }
+}
 .operator-reassignment [role="status"] { color: #21764e; }
 .operator-reassignment [role="alert"] { color: #a83232; }
 .operator-restaurants { margin: 1rem 0; padding: 1rem; border: 1px solid #dce2ec; border-radius: 12px; background: #fff; }
@@ -35,8 +108,6 @@
 .operator-ledger table { width: 100%; border-collapse: collapse; }
 .operator-ledger th, .operator-ledger td { padding: .55rem; border-bottom: 1px solid #edf0f4; text-align: left; white-space: nowrap; }
 .operator-ledger th { background: #f1f4f8; color: #263044; }
-.operator-ledger button { border: 0; border-radius: 7px; padding: .4rem .7rem; background: #c8664e; color: white; font: inherit; font-weight: 700; cursor: pointer; }
-.operator-ledger button:disabled { cursor: wait; opacity: .65; }
 .operator-orders { margin: 1rem 0; padding: 1rem; border: 1px solid #dce2ec; border-radius: 12px; background: #fff; }
 .operator-orders h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
 .operator-orders [role="alert"] { color: #a83232; }
@@ -93,3 +164,58 @@
 @media (max-width: 640px) {
   .operator-map-empty { min-height: 300px; }
 }
+
+.operator-dashboard {
+  color: #2b4148;
+}
+
+.operator-reset-controls button {
+  border-radius: 9px;
+  background: linear-gradient(110deg, var(--primary-dark), var(--accent-dark));
+}
+
+.operator-reset-controls button:hover {
+  filter: brightness(0.94);
+}
+
+.operator-reassignment,
+.operator-restaurants,
+.operator-ledger,
+.operator-orders {
+  margin: 0;
+  padding: clamp(18px, 3vw, 28px);
+  border-color: #e5edef;
+  border-radius: 16px;
+  box-shadow: 0 8px 26px rgba(40, 74, 82, 0.06);
+}
+
+.operator-heading { align-items: flex-start; }
+.operator-heading > p { padding: 10px 14px; border-radius: 10px; background: white; }
+.operator-reassignment { margin-bottom: 18px; }
+.operator-map-shell { border-color: #dce9eb; border-radius: 16px; }
+.operator-map-toolbar button,
+.operator-map-tile-error button {
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.operator-restaurants button {
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.operator-restaurants button:hover,
+.operator-map-toolbar button:hover {
+  background: var(--primary-light);
+}
+
+.operator-ledger th,
+.operator-orders th {
+  background: #eaf8f6;
+  color: #27645e;
+}
+
+.operator-ledger td,
+.operator-orders td { border-color: #edf2f3; }
+
+.operator-map-loading { color: #567078; }
