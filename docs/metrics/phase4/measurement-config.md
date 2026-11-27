@@ -20,12 +20,13 @@ node_modules
 Build output directories
 
 Lizard options:
--l typescript -V
+-l typescript
+-V
 --csv for CSV output
 
 Commands:
-python3 -m lizard -l typescript --csv my-app/server/src my-app/client/src > lizard-raw.csv
-python3 -m lizard -l typescript my-app/server/src my-app/client/src > lizard-report.txt
+python3 -m lizard -l typescript -V --csv my-app/server/src my-app/client/src > lizard-raw.csv
+python3 -m lizard -l typescript -V my-app/server/src my-app/client/src > lizard-report.txt
 python3 ../tools/class_metrics.py <export-root> lizard-raw.csv class-metrics.csv
 
 Notes:
