@@ -1,8 +1,10 @@
-export interface StaffRestaurant {
+export interface RestaurantDetails {
   restaurantId: number;
   restaurantName: string;
   status: 'open' | 'paused' | 'closed';
   menuItems: StaffMenuItem[];
+  averageRating: number | null;
+  ratingCount: number;
 }
 
 export interface StaffMenuItem {
@@ -12,7 +14,7 @@ export interface StaffMenuItem {
   status: 'available' | 'sold_out';
 }
 
-const RESTAURANTS_URL = 'http://localhost:3000/api/restaurants';
+const RESTAURANTS_URL = '/api/restaurants';
 
 async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${RESTAURANTS_URL}${path}`, {
@@ -34,12 +36,12 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
   return body as T;
 }
 
-export function getMyRestaurant(token: string): Promise<StaffRestaurant> {
-  return request<StaffRestaurant>(token, '/me');
+export function getMyRestaurant(token: string): Promise<RestaurantDetails> {
+  return request<RestaurantDetails>(token, '/me');
 }
 
-export function pauseMyRestaurant(token: string): Promise<StaffRestaurant> {
-  return request<StaffRestaurant>(token, '/me/pause', { method: 'POST' });
+export function pauseMyRestaurant(token: string): Promise<RestaurantDetails> {
+  return request<RestaurantDetails>(token, '/me/pause', { method: 'POST' });
 }
 
 export function updateMyMenuItemStatus(

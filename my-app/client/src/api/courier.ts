@@ -1,6 +1,6 @@
 import type { CourierActionResult, CurrentCourier } from '../types/courier';
 
-const COURIERS_URL = 'http://localhost:3000/api/couriers';
+const COURIERS_URL = '/api/couriers';
 
 async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${COURIERS_URL}${path}`, {

@@ -1,6 +1,6 @@
 import { readJsonResponse } from './readJsonResponse';
 
-const RATINGS_URL = 'http://localhost:3000/api/ratings';
+const RATINGS_URL = '/api/ratings';
 
 export interface CustomerOrderRating {
   orderId: number;

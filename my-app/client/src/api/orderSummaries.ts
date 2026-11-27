@@ -1,4 +1,4 @@
-const ORDER_SUMMARIES_URL = 'http://localhost:3000/api/order-summaries';
+const ORDER_SUMMARIES_URL = '/api/order-summaries';
 
 export async function getOrderSummary(token: string, orderId: string): Promise<void> {
   const response = await fetch(

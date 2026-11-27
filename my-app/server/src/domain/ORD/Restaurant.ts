@@ -8,6 +8,8 @@ export class Restaurant {
   public latitude: number;
   public longitude: number;
   public menu: Menu;
+  public averageRating: number | null;
+  public ratingCount: number;
 
   constructor(
     restaurantId: number,
@@ -15,7 +17,9 @@ export class Restaurant {
     status: RestaurantStatus,
     latitude: number,
     longitude: number,
-    menu: Menu
+    menu: Menu,
+    averageRating: number | null = null,
+    ratingCount = 0
   ) {
     this.restaurantId = restaurantId;
     this.restaurantName = restaurantName;
@@ -23,5 +27,7 @@ export class Restaurant {
     this.latitude = latitude;
     this.longitude = longitude;
     this.menu = menu;
+    this.averageRating = averageRating;
+    this.ratingCount = ratingCount;
   }
 }

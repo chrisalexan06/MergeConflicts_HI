@@ -52,7 +52,7 @@ export function App() {
     setAuthLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3000/api/auth/me', {
+      const response = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${sessionToken}` },
       });
       const data = await response.json() as { user?: unknown; error?: string };

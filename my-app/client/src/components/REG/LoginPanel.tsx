@@ -21,7 +21,7 @@ export const LoginPanel: React.FC<Props> = ({ onLoginSuccess, onError }) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3000/api/auth/login', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountName: accountName.trim(), password }),

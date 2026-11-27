@@ -1,6 +1,6 @@
 import { readJsonResponse } from './readJsonResponse';
 
-const CUSTOMER_PROFILE_URL = "http://localhost:3000/api/auth/customer-address";
+const CUSTOMER_PROFILE_URL = "/api/auth/customer-address";
 
 export interface CustomerProfile {
   deliveryAddress: string;

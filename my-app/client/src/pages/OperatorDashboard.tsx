@@ -95,7 +95,7 @@ export default function OperatorDashboard({ token }: { token: string }) {
     let active = true;
     let loadingTimer: number | undefined;
     const loadingStartedAt = Date.now();
-    fetch('http://localhost:3000/api/operator/delivery/map-data', {
+    fetch('/api/operator/delivery/map-data', {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(async response => {
@@ -104,7 +104,7 @@ export default function OperatorDashboard({ token }: { token: string }) {
           if (response.status === 404) {
             throw new Error('Map endpoint not found (HTTP 404): GET /api/operator/delivery/map-data. The server on port 3000 may be running older code or a different app. Restart the backend from my-app/server and confirm it is listening on port 3000.');
           }
-          throw new Error(`Map API returned HTTP ${response.status} with ${contentType || 'an unexpected response'} instead of JSON. Check the backend server at http://localhost:3000.`);
+          throw new Error(`Map API returned HTTP ${response.status} with ${contentType || 'an unexpected response'} instead of JSON. Check the API connection and try again.`);
         }
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? 'Could not load map data.');

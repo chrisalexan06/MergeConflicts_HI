@@ -6,7 +6,7 @@ import {
 	pauseMyRestaurant,
 	updateMyMenuItemDetails,
 	updateMyMenuItemStatus,
-	type StaffRestaurant,
+	type RestaurantDetails,
 } from '../api/restaurants';
 import type { Order } from '../types/order';
 
@@ -40,7 +40,7 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 	const view: RestaurantView = searchParams.get('view') === 'menu' ? 'menu' : 'orders';
 	const setView = (nextView: RestaurantView) => setSearchParams({ view: nextView });
 	const [orders, setOrders] = useState<Order[]>([]);
-	const [restaurant, setRestaurant] = useState<StaffRestaurant | null>(null);
+	const [restaurant, setRestaurant] = useState<RestaurantDetails | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
 	const [updatingRestaurantStatus, setUpdatingRestaurantStatus] = useState(false);

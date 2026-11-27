@@ -31,7 +31,7 @@ export const RegistrationPanel: React.FC<Props> = ({ onSuccess, onError }) => {
 
     async function loadRestaurants() {
       try {
-        const response = await fetch('http://localhost:3000/api/restaurants', {
+        const response = await fetch('/api/restaurants', {
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -65,7 +65,7 @@ export const RegistrationPanel: React.FC<Props> = ({ onSuccess, onError }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:3000/api/auth/register', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

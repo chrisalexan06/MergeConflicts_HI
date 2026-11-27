@@ -130,6 +130,26 @@ export class RatingService {
     }));
   }
 
+  async getRestaurantSummary(restaurantId: number): Promise<{
+    averageRating: number | null;
+    ratingCount: number;
+  }> {
+    const result = await pool.query<{ averageRating: string | null; ratingCount: string }>(
+      `SELECT ROUND(AVG(restaurant_rating)::numeric, 1) AS "averageRating",
+              COUNT(*) AS "ratingCount"
+       FROM public."OrderRatings"
+       WHERE restaurant_id = $1;`,
+      [restaurantId],
+    );
+    const row = result.rows[0];
+    return {
+      averageRating: row?.averageRating === null || row?.averageRating === undefined
+        ? null
+        : Number(row.averageRating),
+      ratingCount: Number(row?.ratingCount ?? 0),
+    };
+  }
+
   async getCourierSummary(courierId: string): Promise<CourierRatingSummary> {
     const result = await pool.query<{ averageRating: string | null; ratingCount: string }>(
       `SELECT ROUND(AVG(courier_rating)::numeric, 1) AS "averageRating", COUNT(*) AS "ratingCount"
