@@ -1,0 +1,42 @@
+{
+  "$schema": "https://supabase.com/schemas/config/v1.json",
+  "project_id": "sugardash-local",
+  "api": {
+    "enabled": false
+  },
+  "db": {
+    "port": 54322,
+    "shadow_port": 54320,
+    "major_version": 17,
+    "pooler": {
+      "enabled": false
+    },
+    "migrations": {
+      "enabled": true
+    },
+    "seed": {
+      "enabled": false
+    }
+  },
+  "realtime": {
+    "enabled": false
+  },
+  "studio": {
+    "enabled": false
+  },
+  "local_smtp": {
+    "enabled": false
+  },
+  "storage": {
+    "enabled": false
+  },
+  "auth": {
+    "enabled": false
+  },
+  "edge_runtime": {
+    "enabled": false
+  },
+  "analytics": {
+    "enabled": false
+  }
+}

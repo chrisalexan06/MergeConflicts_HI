@@ -9,11 +9,13 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is missing from .env");
 }
 
+const ssl = process.env.DB_SSL === 'false'
+  ? false
+  : { rejectUnauthorized: false };
+
 export const pool = new Pool({
   connectionString,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl,
   max: 5,
 });
 

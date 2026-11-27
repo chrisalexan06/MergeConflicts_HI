@@ -111,7 +111,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
 
     async function loadRestaurants() {
       try {
-        const response = await fetch('http://localhost:3000/api/restaurants', {
+        const response = await fetch('/api/restaurants', {
           signal: controller.signal,
         });
 

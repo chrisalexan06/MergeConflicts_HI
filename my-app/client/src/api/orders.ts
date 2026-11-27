@@ -1,7 +1,7 @@
 import type { Order, PlaceOrderRequest } from "../types/order";
 import { readJsonResponse } from './readJsonResponse';
 
-const ORDERS_URL = "http://localhost:3000/api/orders";
+const ORDERS_URL = "/api/orders";
 
 async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${ORDERS_URL}${path}`, {

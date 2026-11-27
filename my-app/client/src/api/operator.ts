@@ -1,5 +1,5 @@
-const OPERATOR_URL = 'http://localhost:3000/api/operator';
-const ORDER_SUMMARIES_URL = 'http://localhost:3000/api/order-summaries';
+const OPERATOR_URL = '/api/operator';
+const ORDER_SUMMARIES_URL = '/api/order-summaries';
 
 export type OperatorRestaurantStatus = 'open' | 'paused';
 

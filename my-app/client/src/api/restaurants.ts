@@ -14,7 +14,7 @@ export interface StaffMenuItem {
   status: 'available' | 'sold_out';
 }
 
-const RESTAURANTS_URL = 'http://localhost:3000/api/restaurants';
+const RESTAURANTS_URL = '/api/restaurants';
 
 async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${RESTAURANTS_URL}${path}`, {

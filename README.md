@@ -1,5 +1,5 @@
 # Sugar Dash
-For now since only Phase 2 is implemented, this is the flow we have
+This repository contains the Sugar Dash food delivery application.
 
 ## 1. Platform & Environment Requirements
 Before compiling and running the project, ensure your environment meets the following specifications:

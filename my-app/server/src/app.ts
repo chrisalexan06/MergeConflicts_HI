@@ -14,7 +14,8 @@ import { DispatchQueueService } from './application/DLV/DispatchQueueService.js'
 import { pool } from './db.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+let appReady = false;
 
 // Dynamic CORS middleware: allows 5173, 5177, or any Vite localhost port
 app.use((req, res, next) => {
@@ -33,6 +34,50 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
+app.use((request, response, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+    next();
+    return;
+  }
+
+  const origin = request.get('origin');
+  if (!origin) {
+    next();
+    return;
+  }
+
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    response.status(403).json({ error: 'Request origin is not allowed.' });
+    return;
+  }
+
+  const isLocalDevelopment = ['localhost', '127.0.0.1', '[::1]'].includes(originUrl.hostname);
+  const requestHost = request.get('host');
+  if (!isLocalDevelopment && originUrl.host !== requestHost) {
+    response.status(403).json({ error: 'Request origin is not allowed.' });
+    return;
+  }
+
+  next();
+});
+
+app.get('/health', async (_request, response) => {
+  if (!appReady) {
+    response.status(503).json({ status: 'starting' });
+    return;
+  }
+
+  try {
+    await pool.query('SELECT 1');
+    response.json({ status: 'ok' });
+  } catch {
+    response.status(503).json({ status: 'database unavailable' });
+  }
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -63,6 +108,7 @@ InitialCitySeeder.seed()
       `Dispatch recovery: ${result.offered} offers created, ` +
       `${result.waiting} waiting.`
     );
+    appReady = true;
   })
   .catch((err) => {
     console.error(
@@ -71,8 +117,8 @@ InitialCitySeeder.seed()
     );
   });
 
-app.listen(PORT, () => {
-  console.log(`Backend server listening on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend server listening on 0.0.0.0:${PORT}`);
 });
 
 export default app;

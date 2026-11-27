@@ -1,0 +1,43 @@
+x-demo:
+  web: client
+  port: 80
+
+services:
+  database:
+    image: ghcr.io/chrisalexan06/mergeconflicts_hi-database:replace-after-actions
+    environment:
+      POSTGRES_DB: sugardash
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: sugardash-demo-only
+    volumes:
+      - sugardash-database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sugardash"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    image: ghcr.io/chrisalexan06/mergeconflicts_hi-server:replace-after-actions
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:sugardash-demo-only@database:5432/sugardash
+      DB_SSL: "false"
+      PORT: "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  client:
+    image: ghcr.io/chrisalexan06/mergeconflicts_hi-client:replace-after-actions
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  sugardash-database:

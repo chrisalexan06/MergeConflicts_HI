@@ -1,0 +1,9 @@
+services:
+  database:
+    image: sugardash-demo-database:check
+  server:
+    image: mergeconflicts_hi-server:latest
+  client:
+    image: mergeconflicts_hi-client:latest
+    ports:
+      - "8081:80"
