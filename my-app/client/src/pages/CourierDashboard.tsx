@@ -8,7 +8,12 @@ import {
   goOffDuty,
   goOnDuty,
 } from '../api/courier';
-import { getOrderSummary } from '../api/orderSummaries';
+import {
+  getOrderSummary,
+  listCourierOrderHistory,
+  type CourierOrderHistoryEntry,
+} from '../api/orderSummaries';
+import { listRestaurantDirectory, type RestaurantDirectoryEntry } from '../api/restaurants';
 import { getMyCourierRatingSummary, type CourierRatingSummary } from '../api/ratings';
 import type { CurrentCourier } from '../types/courier';
 import './CourierDashboard.css';
@@ -23,11 +28,109 @@ interface CourierDashboardProps {
   token: string;
 }
 
-type CourierView = 'status' | 'delivery';
+type CourierView = 'status' | 'delivery' | 'history';
+
+function CourierOrderHistory({ token }: CourierDashboardProps) {
+  const [entries, setEntries] = useState<CourierOrderHistoryEntry[] | null>(null);
+  const [restaurants, setRestaurants] = useState<RestaurantDirectoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void listCourierOrderHistory(token)
+      .then((history) => {
+        if (active) setEntries(history);
+        return listRestaurantDirectory()
+          .then((directory) => {
+            if (active) setRestaurants(directory);
+          })
+          .catch((requestError: unknown) => {
+            if (active) {
+              setDirectoryError(
+                requestError instanceof Error
+                  ? requestError.message
+                  : 'Could not load restaurant names.'
+              );
+            }
+          });
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : 'Could not load delivery history.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [token]);
+
+  const orders = entries?.filter((entry) => entry.entryType === 'charge') ?? [];
+
+  return (
+    <section className="courier-action-section" aria-labelledby="courier-history-heading">
+      <div className="courier-section-heading">
+        <h2 id="courier-history-heading">Order History</h2>
+      </div>
+      {loading && <p className="muted" role="status">Loading delivery history...</p>}
+      {error && <div role="alert" className="alert alert-error">{error}</div>}
+      {directoryError && (
+        <p className="muted" role="status">
+          Restaurant names are unavailable; IDs are shown instead. {directoryError}
+        </p>
+      )}
+      {!loading && !error && orders.length === 0 && (
+        <p className="muted">Completed deliveries will appear here.</p>
+      )}
+      {!loading && !error && orders.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Order</th>
+                <th scope="col">Restaurant</th>
+                <th scope="col">Delivered</th>
+                <th scope="col">Items</th>
+                <th scope="col">Total</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((entry) => (
+                <tr key={entry.ledgerEntryId}>
+                  <td>#{entry.orderId}</td>
+                  <td>
+                    {restaurants.find((restaurant) => restaurant.restaurantId === Number(entry.restaurantId))
+                      ?.restaurantName ?? `Restaurant #${entry.restaurantId}`}
+                  </td>
+                  <td>{new Date(entry.deliveredAt).toLocaleString()}</td>
+                  <td>
+                    {entry.lines.map((line, index) => (
+                      <div key={`${line.itemName}-${index}`}>
+                        {line.quantity} x {line.itemName}
+                      </div>
+                    ))}
+                  </td>
+                  <td>${entry.total.toFixed(2)}</td>
+                  <td>{formatStatus(entry.orderStatus)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function CourierDashboard({ token }: CourierDashboardProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const view: CourierView = searchParams.get('view') === 'delivery' ? 'delivery' : 'status';
+  const requestedView = searchParams.get('view');
+  const view: CourierView = requestedView === 'delivery' || requestedView === 'history'
+    ? requestedView
+    : 'status';
   const setView = (nextView: CourierView) => setSearchParams({ view: nextView });
   const [courier, setCourier] = useState<CurrentCourier | null>(null);
   const [ratingSummary, setRatingSummary] = useState<CourierRatingSummary | null>(null);
@@ -196,6 +299,7 @@ export default function CourierDashboard({ token }: CourierDashboardProps) {
             <button type="button" className={view === 'delivery' ? 'view-tab active' : 'view-tab'} aria-current={view === 'delivery' ? 'page' : undefined} onClick={() => setView('delivery')}>
               Deliveries{courier.currentOfferId ? ' · Offer Waiting' : ''}
             </button>
+            <button type="button" className={view === 'history' ? 'view-tab active' : 'view-tab'} aria-current={view === 'history' ? 'page' : undefined} onClick={() => setView('history')}>Order History</button>
           </nav>
           {view === 'status' && <>
           <div className="courier-summary-grid" aria-label="Courier current state">
@@ -328,6 +432,7 @@ export default function CourierDashboard({ token }: CourierDashboardProps) {
             </section>
           </div>
           </>}
+          {view === 'history' && <CourierOrderHistory token={token} />}
         </>
       )}
     </section>

@@ -20,7 +20,14 @@ interface MenuItemEdit {
 	price: string;
 }
 
-type RestaurantView = 'orders' | 'menu';
+type RestaurantView = 'orders' | 'history' | 'menu';
+
+const historicalOrderStatuses = new Set<Order['orderStatus']>([
+	'delivered',
+	'completed',
+	'cancelled',
+	'refunded',
+]);
 
 const actionsByStatus: Partial<Record<Order['orderStatus'], RestaurantOrderAction[]>> = {
 	placed: ['accept', 'cancel'],
@@ -37,7 +44,10 @@ const actionLabels: Record<RestaurantOrderAction, string> = {
 
 export default function RestaurantDashboard({ token }: RestaurantDashboardProps) {
 	const [searchParams, setSearchParams] = useSearchParams();
-	const view: RestaurantView = searchParams.get('view') === 'menu' ? 'menu' : 'orders';
+	const requestedView = searchParams.get('view');
+	const view: RestaurantView = requestedView === 'menu' || requestedView === 'history'
+		? requestedView
+		: 'orders';
 	const setView = (nextView: RestaurantView) => setSearchParams({ view: nextView });
 	const [orders, setOrders] = useState<Order[]>([]);
 	const [restaurant, setRestaurant] = useState<RestaurantDetails | null>(null);
@@ -48,6 +58,8 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 	const [editingMenuItem, setEditingMenuItem] = useState<MenuItemEdit | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [orderActionError, setOrderActionError] = useState<{ orderId: number; message: string } | null>(null);
+	const currentOrders = orders.filter((order) => !historicalOrderStatuses.has(order.orderStatus));
+	const historicalOrders = orders.filter((order) => historicalOrderStatuses.has(order.orderStatus));
 
 	async function refreshOrders() {
 		setOrders(await listRestaurantOrders(token));
@@ -171,6 +183,7 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 			{error && <div role="alert" className="alert alert-error">{error}</div>}
 			<nav className="view-tabs" aria-label="Restaurant pages">
 				<button type="button" className={view === 'orders' ? 'view-tab active' : 'view-tab'} aria-current={view === 'orders' ? 'page' : undefined} onClick={() => setView('orders')}>Incoming Orders</button>
+				<button type="button" className={view === 'history' ? 'view-tab active' : 'view-tab'} aria-current={view === 'history' ? 'page' : undefined} onClick={() => setView('history')}>Order History</button>
 				<button type="button" className={view === 'menu' ? 'view-tab active' : 'view-tab'} aria-current={view === 'menu' ? 'page' : undefined} onClick={() => setView('menu')}>Menu &amp; Availability</button>
 			</nav>
 			{view === 'menu' && <>
@@ -294,9 +307,9 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 			{view === 'orders' && <>
 			<h3>Restaurant Orders</h3>
 
-			{!loading && orders.length === 0 && <p className="muted">No orders for this restaurant.</p>}
+			{!loading && currentOrders.length === 0 && <p className="muted">No current orders for this restaurant.</p>}
 
-			{!loading && orders.length > 0 && (
+			{!loading && currentOrders.length > 0 && (
 			<div className="table-wrap">
 				<table>
 				<thead>
@@ -310,7 +323,7 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 					</tr>
 				</thead>
 				<tbody>
-					{orders.map((order) => (
+					{currentOrders.map((order) => (
 					<tr key={order.orderId}>
 						<td>#{order.orderId}</td>
 						<td>{new Date(order.createdAt).toLocaleString()}</td>
@@ -352,6 +365,48 @@ export default function RestaurantDashboard({ token }: RestaurantDashboardProps)
 				</tbody>
 				</table>
 			</div>
+			)}
+			</>}
+			{view === 'history' && <>
+			<h3>Order History</h3>
+			{!loading && historicalOrders.length === 0 && (
+				<p className="muted">Completed or cancelled orders will appear here.</p>
+			)}
+			{!loading && historicalOrders.length > 0 && (
+				<div className="table-wrap">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Order</th>
+								<th scope="col">Placed</th>
+								<th scope="col">Items</th>
+								<th scope="col">Total</th>
+								<th scope="col">Status</th>
+							</tr>
+						</thead>
+						<tbody>
+							{historicalOrders.map((order) => (
+								<tr key={order.orderId}>
+									<td>#{order.orderId}</td>
+									<td>{new Date(order.createdAt).toLocaleString()}</td>
+									<td>
+										{order.items.map((item, index) => (
+											<div key={`${item.itemName}-${index}`}>
+												{item.quantity} x {item.itemName}
+											</div>
+										))}
+									</td>
+									<td>${order.total.toFixed(2)}</td>
+									<td>
+										<span className={`badge badge-${order.orderStatus}`}>
+											{order.orderStatus.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}
+										</span>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
 			)}
 			</>}
 		</section>
