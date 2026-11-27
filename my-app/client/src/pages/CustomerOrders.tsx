@@ -38,12 +38,21 @@ interface CustomerOrdersProps {
 }
 
 const emptyCustomerProfile: CustomerProfile = { deliveryAddress: '', city: '', country: '' };
-type CustomerView = 'browse' | 'order' | 'history';
+type CustomerView = 'browse' | 'order' | 'current' | 'history';
+
+const historicalOrderStatuses = new Set<Order['orderStatus']>([
+  'delivered',
+  'completed',
+  'cancelled',
+  'refunded',
+]);
 
 export default function CustomerOrders({ token }: CustomerOrdersProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
-  const view: CustomerView = requestedView === 'order' || requestedView === 'history'
+  const view: CustomerView = requestedView === 'order'
+    || requestedView === 'current'
+    || requestedView === 'history'
     ? requestedView
     : 'browse';
   const setView = (nextView: CustomerView) => setSearchParams({ view: nextView });
@@ -211,6 +220,8 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
   const selectedRestaurant = restaurants.find(
     (restaurant) => restaurant.restaurantId === selectedRestaurantId
   );
+  const currentOrders = orders.filter((order) => !historicalOrderStatuses.has(order.orderStatus));
+  const historicalOrders = orders.filter((order) => historicalOrderStatuses.has(order.orderStatus));
   const restaurantCannotAcceptOrders = selectedRestaurant?.status === 'paused'
     || selectedRestaurant?.status === 'closed';
   const selectedMenuItems = selectedRestaurant?.menu.items.filter(
@@ -356,7 +367,8 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
           <nav className="view-tabs" aria-label="Customer pages">
             <button type="button" className={view === 'browse' ? 'view-tab active' : 'view-tab'} aria-current={view === 'browse' ? 'page' : undefined} onClick={() => setView('browse')}>Browse Menus</button>
             <button type="button" className={view === 'order' ? 'view-tab active' : 'view-tab'} aria-current={view === 'order' ? 'page' : undefined} onClick={() => setView('order')}>Place an Order</button>
-            <button type="button" className={view === 'history' ? 'view-tab active' : 'view-tab'} aria-current={view === 'history' ? 'page' : undefined} onClick={() => setView('history')}>My Orders</button>
+            <button type="button" className={view === 'current' ? 'view-tab active' : 'view-tab'} aria-current={view === 'current' ? 'page' : undefined} onClick={() => setView('current')}>Current Orders</button>
+            <button type="button" className={view === 'history' ? 'view-tab active' : 'view-tab'} aria-current={view === 'history' ? 'page' : undefined} onClick={() => setView('history')}>Order History</button>
           </nav>
 
           {view === 'browse' && <section className="card">
@@ -603,7 +615,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
             )}
           </section>}
 
-          {view === 'history' && <>
+          {view === 'current' && <>
           <section className="card" aria-labelledby="track-order-heading">
             <h2 id="track-order-heading" className="page-title">Track an order</h2>
             <form onSubmit={handleTrackOrderSubmit} className="inline-form">
@@ -654,7 +666,7 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
           </section>
 
           <CustomerCurrentOrders
-            orders={orders}
+            orders={currentOrders}
             restaurantNames={Object.fromEntries(
               restaurants.map((restaurant) => [restaurant.restaurantId, restaurant.restaurantName])
             )}
@@ -662,6 +674,27 @@ export default function CustomerOrders({ token }: CustomerOrdersProps) {
             onTrackOrder={(orderId) => void handleTrackOrder(orderId)}
             onCancelOrder={handleCancelOrder}
             onSubmitRating={handleSubmitRating}
+            heading="Current Orders"
+            emptyMessage="You have no current orders."
+          />
+          {ordersError && <div role="alert" className="alert alert-error">Error loading orders: {ordersError}</div>}
+          </>}
+
+          {view === 'history' && <>
+          <CustomerCurrentOrders
+            orders={historicalOrders}
+            restaurantNames={Object.fromEntries(
+              restaurants.map((restaurant) => [restaurant.restaurantId, restaurant.restaurantName])
+            )}
+            ratings={customerRatings}
+            onTrackOrder={(orderId) => {
+              setView('current');
+              void handleTrackOrder(orderId);
+            }}
+            onCancelOrder={handleCancelOrder}
+            onSubmitRating={handleSubmitRating}
+            heading="Order History"
+            emptyMessage="Completed or cancelled orders will appear here."
           />
           {ordersError && <div role="alert" className="alert alert-error">Error loading orders: {ordersError}</div>}
           {ratingsError && <div role="alert" className="alert alert-error">Error loading ratings: {ratingsError}</div>}

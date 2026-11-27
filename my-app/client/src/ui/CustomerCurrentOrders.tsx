@@ -7,6 +7,8 @@ interface CustomerCurrentOrdersProps {
   orders: Order[];
   restaurantNames: Record<number, string>;
   ratings: Record<number, CustomerOrderRating>;
+  heading?: string;
+  emptyMessage?: string;
   onTrackOrder(orderId: number): void;
   onCancelOrder(orderId: number): Promise<void>;
   onSubmitRating(orderId: number, restaurantRating: number, courierRating: number): Promise<void>;
@@ -51,7 +53,16 @@ function StarRating({ label, value, onChange, disabled, messages }: StarRatingPr
   );
 }
 
-export function CustomerCurrentOrders({ orders, restaurantNames, ratings, onTrackOrder, onCancelOrder, onSubmitRating }: CustomerCurrentOrdersProps) {
+export function CustomerCurrentOrders({
+  orders,
+  restaurantNames,
+  ratings,
+  heading = 'Your orders',
+  emptyMessage = 'You have no orders yet.',
+  onTrackOrder,
+  onCancelOrder,
+  onSubmitRating,
+}: CustomerCurrentOrdersProps) {
   const [message, setMessage] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
@@ -69,10 +80,10 @@ export function CustomerCurrentOrders({ orders, restaurantNames, ratings, onTrac
 
   return (
     <section className="card">
-      <h2 className="page-title">Your orders</h2>
+      <h2 className="page-title">{heading}</h2>
 
       {orders.length === 0 ? (
-        <p className="muted">You have no orders yet.</p>
+        <p className="muted">{emptyMessage}</p>
       ) : (
         <div className="table-wrap">
           <table>
@@ -114,7 +125,7 @@ export function CustomerCurrentOrders({ orders, restaurantNames, ratings, onTrac
                     <td>${total.toFixed(2)}</td>
                     <td className="col-status">
                       <span className={`badge badge-${order.orderStatus}`}>
-                        {order.orderStatus === 'cancelled' ? 'Cancelled' : order.orderStatus}
+                        {formatOrderStatus(order.orderStatus)}
                       </span>
                     </td>
                     <td className="col-actions">
@@ -155,6 +166,10 @@ interface OrderRatingFormProps {
   orderId: number;
   rating?: CustomerOrderRating;
   onSubmit(orderId: number, restaurantRating: number, courierRating: number): Promise<void>;
+}
+
+function formatOrderStatus(status: Order['orderStatus']): string {
+  return status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function OrderRatingForm({ orderId, rating, onSubmit }: OrderRatingFormProps) {
