@@ -1,3 +1,5 @@
+import { readJsonResponse } from './readJsonResponse';
+
 export interface RestaurantDetails {
   restaurantId: number;
   restaurantName: string;
@@ -15,6 +17,27 @@ export interface StaffMenuItem {
 }
 
 const RESTAURANTS_URL = '/api/restaurants';
+
+export interface RestaurantDirectoryEntry {
+  restaurantId: number;
+  restaurantName: string;
+}
+
+export async function listRestaurantDirectory(): Promise<RestaurantDirectoryEntry[]> {
+  const response = await fetch(RESTAURANTS_URL);
+  const body = await readJsonResponse(response, 'Restaurant directory');
+  if (!response.ok) {
+    const message = typeof body === 'object' && body !== null
+      && 'error' in body && typeof body.error === 'string'
+      ? body.error
+      : `Restaurant directory request failed with HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+  if (!Array.isArray(body)) {
+    throw new Error('Restaurant directory returned an invalid response.');
+  }
+  return body as RestaurantDirectoryEntry[];
+}
 
 async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${RESTAURANTS_URL}${path}`, {

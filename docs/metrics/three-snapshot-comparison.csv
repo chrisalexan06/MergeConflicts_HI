@@ -1,0 +1,7 @@
+Class,Role,phase3 LOC,phase3 CCN,phase4-refactored LOC,phase4-refactored CCN,phase4 LOC,phase4 CCN
+PostgresOrderStore,Hotspot 1,222,35,326,37,326,37
+OrderService (services),Hotspot 2,182,52,200,56,200,56
+Order,Hotspot 3,147,33,147,33,147,33
+RestaurantService,Hotspot 4,171,27,167,26,185,32
+OrderService (application),Hotspot 5,130,18,130,18,130,18
+RatingService,New (RVW),-,-,-,-,142,22
