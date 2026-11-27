@@ -75,10 +75,10 @@ The workflow in `.github/workflows/publish-demo-images.yml` publishes three `lin
 
 1. Commit and push these files to the default branch. In GitHub, open **Actions** and the **Publish demo images** run. The run summary prints the three `image:` lines.
 2. On GitHub's **Packages** page, change each image package's visibility to **Public** so the demo platform can pull them without a registry token.
-3. Replace the three placeholder `image:` values in `demo/compose.yaml` with the exact lines from the run summary, then commit and push that update.
+3. Set the three `image:` values in `demo/compose.yaml` to the exact lines from the successful run summary, then commit and push that update. Refresh them after publishing a newer image set.
 4. Upload or paste `demo/compose.yaml` into the course platform's compose checker, fix any reported issue, then submit it on the group page.
 
-The platform Compose file intentionally has no `build:`, `env_file:`, or host `ports:` entries. It exposes the client through `x-demo`; nginx serves the production frontend and proxies `/api` to the private server service. The database schema is initialized from `supabase/migrations/` when the named database volume is first created. The server then seeds the configured restaurants, menus, and demo accounts. The Compose file declares a named database volume; data persists across container recreation when the platform retains that volume.
+The platform Compose file intentionally has no `build:`, `env_file:`, or host `ports:` entries. It exposes the client through `x-demo`; nginx serves the production frontend and proxies `/api` to the private server service. The database schema is initialized from `demo/database/10_sugardash_schema.sql` when the named database volume is first created. This file is copied from the Supabase migration so the database image can build from its own service folder; keep it synchronized if the migration changes. The server then seeds the configured restaurants, menus, and demo accounts. The Compose file declares a named database volume; data persists across container recreation when the platform retains that volume.
 
 The platform setup needs no hosted Supabase, AWS/S3, or other third-party credentials. The database password in `demo/compose.yaml` is a demo-only credential for the private database service; do not reuse it elsewhere.
 
@@ -86,7 +86,7 @@ To rehearse the exact platform stack locally without publishing or pulling image
 
 ```bash
 docker compose build
-docker build --file demo/database/Dockerfile --tag sugardash-demo-database:check .
+docker build --platform linux/amd64 --file demo/database/Dockerfile --tag sugardash-demo-database:check demo/database
 docker compose -f demo/compose.yaml -f demo/rehearse.yaml up
 ```
 
